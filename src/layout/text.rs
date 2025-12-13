@@ -177,10 +177,11 @@ fn layout_inline(
             }
         }
         Inline::SoftBreak => {
-            // Add space
-            if *current_width > 0 && *current_width < max_width {
-                current_line.add_segment(" ".to_string(), base_style);
-                *current_width += 1;
+            // In a terminal viewer, treat soft breaks as line breaks for better readability
+            // This makes the rendered output match the source file more closely
+            if !current_line.is_empty() {
+                lines.push(std::mem::replace(current_line, Line::new()));
+                *current_width = 0;
             }
         }
     }
