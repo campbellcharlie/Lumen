@@ -139,19 +139,20 @@ fn render_node(
             }
         }
         LayoutElement::BlockQuote => {
-            // Render border on left
-            let block = Block::default()
-                .borders(Borders::LEFT)
-                .border_style(Style::default().fg(to_ratatui_color(theme.blocks.blockquote.color)));
+            // Draw left border manually using vertical line characters
+            let border_style = Style::default().fg(to_ratatui_color(theme.blocks.blockquote.color));
+            let border_height = node.rect.height.min(area.height.saturating_sub(display_y));
 
-            let block_area = ratatui::layout::Rect {
-                x: node.rect.x,
-                y: display_y,
-                width: node.rect.width,
-                height: node.rect.height.min(area.height.saturating_sub(display_y)),
-            };
-
-            frame.render_widget(block, block_area);
+            for i in 0..border_height {
+                let border_line = Span::styled("│", border_style);
+                let border_area = ratatui::layout::Rect {
+                    x: node.rect.x,
+                    y: display_y + i,
+                    width: 1,
+                    height: 1,
+                };
+                frame.render_widget(Paragraph::new(RatatuiText::from(border_line)), border_area);
+            }
 
             // Render children
             for child in &node.children {
@@ -359,19 +360,43 @@ fn render_code_block(
         .fg(to_ratatui_color(code_style.foreground))
         .bg(to_ratatui_color(code_style.background));
 
-    // Render border
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(style);
+    let block_height = (lines.len() as u16 + 2).min(area.height.saturating_sub(display_y));
 
-    let block_area = ratatui::layout::Rect {
-        x,
-        y: display_y,
-        width,
-        height: (lines.len() as u16 + 2).min(area.height.saturating_sub(display_y)),
-    };
+    // Manually draw box border to avoid Ratatui's dashed line artifacts
+    let border_fg = to_ratatui_color(code_style.foreground);
+    let border_style = Style::default().fg(border_fg).bg(to_ratatui_color(code_style.background));
 
-    frame.render_widget(block, block_area);
+    // Top border: ┌───...───┐
+    let top_border = format!("┌{}┐", "─".repeat(width.saturating_sub(2) as usize));
+    let top_span = Span::styled(top_border, border_style);
+    frame.render_widget(
+        Paragraph::new(RatatuiText::from(top_span)),
+        ratatui::layout::Rect { x, y: display_y, width, height: 1 }
+    );
+
+    // Left and right borders for each content line
+    for i in 1..block_height.saturating_sub(1) {
+        // Left border
+        frame.render_widget(
+            Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
+            ratatui::layout::Rect { x, y: display_y + i, width: 1, height: 1 }
+        );
+        // Right border
+        frame.render_widget(
+            Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
+            ratatui::layout::Rect { x: x + width - 1, y: display_y + i, width: 1, height: 1 }
+        );
+    }
+
+    // Bottom border: └───...───┘
+    if block_height > 1 {
+        let bottom_border = format!("└{}┘", "─".repeat(width.saturating_sub(2) as usize));
+        let bottom_span = Span::styled(bottom_border, border_style);
+        frame.render_widget(
+            Paragraph::new(RatatuiText::from(bottom_span)),
+            ratatui::layout::Rect { x, y: display_y + block_height - 1, width, height: 1 }
+        );
+    }
 
     // Render language badge if present
     if let Some(lang_name) = lang {
