@@ -65,6 +65,9 @@ pub enum LayoutElement {
         lines: Vec<String>,
     },
     BlockQuote,
+    Callout {
+        kind: crate::ir::CalloutKind,
+    },
     List {
         ordered: bool,
         start: usize,

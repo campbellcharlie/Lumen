@@ -150,6 +150,8 @@ pub struct BlockStyles {
     pub table: TableStyle,
     #[serde(default)]
     pub horizontal_rule: HorizontalRuleStyle,
+    #[serde(default)]
+    pub callout: CalloutStyles,
 }
 
 /// Styles for all heading levels
@@ -240,6 +242,64 @@ pub struct BlockQuoteStyle {
     pub border: Option<BorderConfig>,
     #[serde(default = "default_blockquote_indent")]
     pub indent: u16,
+}
+
+/// Callout/admonition styles for different types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalloutStyles {
+    pub note: CalloutStyle,
+    pub warning: CalloutStyle,
+    pub important: CalloutStyle,
+    pub tip: CalloutStyle,
+    pub caution: CalloutStyle,
+}
+
+/// Individual callout style
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalloutStyle {
+    pub icon: String,
+    pub color: Color,
+    #[serde(default)]
+    pub background: Option<Color>,
+    #[serde(default)]
+    pub border_color: Color,
+}
+
+impl Default for CalloutStyles {
+    fn default() -> Self {
+        Self {
+            note: CalloutStyle {
+                icon: "ℹ".to_string(),
+                color: Color::Ansi256(39),  // Blue
+                background: Some(Color::Ansi256(17)),  // Dark blue bg
+                border_color: Color::Ansi256(39),
+            },
+            warning: CalloutStyle {
+                icon: "⚠".to_string(),
+                color: Color::Ansi256(220),  // Yellow
+                background: Some(Color::Ansi256(58)),  // Dark yellow bg
+                border_color: Color::Ansi256(220),
+            },
+            important: CalloutStyle {
+                icon: "❗".to_string(),
+                color: Color::Ansi256(201),  // Magenta
+                background: Some(Color::Ansi256(53)),  // Dark magenta bg
+                border_color: Color::Ansi256(201),
+            },
+            tip: CalloutStyle {
+                icon: "💡".to_string(),
+                color: Color::Ansi256(42),  // Green
+                background: Some(Color::Ansi256(22)),  // Dark green bg
+                border_color: Color::Ansi256(42),
+            },
+            caution: CalloutStyle {
+                icon: "🔥".to_string(),
+                color: Color::Ansi256(202),  // Orange/red
+                background: Some(Color::Ansi256(52)),  // Dark red bg
+                border_color: Color::Ansi256(202),
+            },
+        }
+    }
 }
 
 /// List style

@@ -2,7 +2,7 @@
 
 use super::text::layout_text;
 use super::types::*;
-use crate::ir::{Block, Document, Inline, ListItem};
+use crate::ir::{Block, CalloutKind, Document, Inline, ListItem};
 use crate::theme::Theme;
 
 /// Layout a document into a positioned tree
@@ -102,9 +102,8 @@ fn layout_block(
             layout_table(headers, rows, alignment, x, y, width, theme, id, node_counter)
         }
         Block::HorizontalRule => layout_horizontal_rule(x, y, width, theme, id),
-        Block::Callout { .. } => {
-            // Treat callouts as blockquotes for now
-            layout_blockquote(&[], x, y, width, theme, id, node_counter, hit_regions)
+        Block::Callout { kind, content, .. } => {
+            layout_callout(*kind, content, x, y, width, theme, id, node_counter, hit_regions)
         }
     }
 }
@@ -227,6 +226,42 @@ fn layout_blockquote(
         id,
         rect: Rectangle::new(x, y, width, height),
         element: LayoutElement::BlockQuote,
+        children,
+        style: ComputedStyle::default(),
+    }
+}
+
+fn layout_callout(
+    kind: CalloutKind,
+    blocks: &[Block],
+    x: u16,
+    y: u16,
+    width: u16,
+    theme: &Theme,
+    id: NodeId,
+    node_counter: &mut NodeId,
+    hit_regions: &mut Vec<HitRegion>,
+) -> LayoutNode {
+    // Callouts have a 2-character indent for the icon/border
+    let indent = 2u16;
+    let content_width = width.saturating_sub(indent);
+
+    let children = layout_blocks(
+        blocks,
+        x + indent,
+        y,
+        content_width,
+        theme,
+        node_counter,
+        hit_regions,
+    );
+
+    let height = children.iter().map(|n| n.rect.height).sum::<u16>().max(1);
+
+    LayoutNode {
+        id,
+        rect: Rectangle::new(x, y, width, height),
+        element: LayoutElement::Callout { kind },
         children,
         style: ComputedStyle::default(),
     }

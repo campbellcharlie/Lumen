@@ -119,6 +119,7 @@ pub fn docs_theme() -> Theme {
                 style: BorderStyle::Single,
                 color: Color::rgb(100, 100, 100),
             },
+            callout: Default::default(),
         },
         inlines: InlineStyles {
             strong: TextStyle {
@@ -260,6 +261,7 @@ pub fn neon_theme() -> Theme {
                 style: BorderStyle::Heavy,
                 color: Color::rgb(0, 255, 255),
             },
+            callout: Default::default(),
         },
         inlines: InlineStyles {
             strong: TextStyle {
@@ -394,6 +396,7 @@ pub fn minimal_theme() -> Theme {
                 style: BorderStyle::Ascii,
                 color: Color::Ansi(AnsiColor::BrightBlack),
             },
+            callout: Default::default(),
         },
         inlines: InlineStyles {
             strong: TextStyle {

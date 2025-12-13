@@ -140,6 +140,57 @@ fn render_node(
                 render_node(frame, child, theme, scroll_y, area);
             }
         }
+        LayoutElement::Callout { kind } => {
+            use crate::ir::CalloutKind;
+
+            // Get style for this callout type
+            let callout_style = match kind {
+                CalloutKind::Note => &theme.blocks.callout.note,
+                CalloutKind::Warning => &theme.blocks.callout.warning,
+                CalloutKind::Important => &theme.blocks.callout.important,
+                CalloutKind::Tip => &theme.blocks.callout.tip,
+                CalloutKind::Caution => &theme.blocks.callout.caution,
+            };
+
+            // Render border with background
+            let block = Block::default()
+                .borders(Borders::LEFT)
+                .border_style(Style::default().fg(to_ratatui_color(callout_style.border_color)));
+
+            let block_area = ratatui::layout::Rect {
+                x: node.rect.x,
+                y: display_y,
+                width: node.rect.width,
+                height: node.rect.height.min(area.height.saturating_sub(display_y)),
+            };
+
+            // Render background if specified
+            if let Some(bg) = callout_style.background {
+                let bg_block = Block::default()
+                    .style(Style::default().bg(to_ratatui_color(bg)));
+                frame.render_widget(bg_block, block_area);
+            }
+
+            frame.render_widget(block, block_area);
+
+            // Render icon at the top left
+            let icon_span = Span::styled(
+                &callout_style.icon,
+                Style::default().fg(to_ratatui_color(callout_style.color))
+            );
+            let icon_area = ratatui::layout::Rect {
+                x: node.rect.x,
+                y: display_y,
+                width: 2,
+                height: 1,
+            };
+            frame.render_widget(Paragraph::new(RatatuiText::from(icon_span)), icon_area);
+
+            // Render children
+            for child in &node.children {
+                render_node(frame, child, theme, scroll_y, area);
+            }
+        }
         LayoutElement::Table { .. } => {
             for child in &node.children {
                 render_node(frame, child, theme, scroll_y, area);

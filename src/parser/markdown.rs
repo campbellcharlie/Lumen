@@ -1,7 +1,7 @@
 //! Markdown to IR conversion using pulldown-cmark
 
 use crate::ir::{
-    Alignment, Block, Document, Inline, ListItem, TableCell,
+    Alignment, Block, CalloutKind, Document, Inline, ListItem, TableCell,
 };
 use pulldown_cmark::{Alignment as CMarkAlignment, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
@@ -205,7 +205,12 @@ impl MarkdownConverter {
             }
             TagEnd::BlockQuote(_) => {
                 if let Some(BlockContext::BlockQuote { blocks }) = self.block_stack.pop() {
-                    self.push_block(Block::BlockQuote { blocks });
+                    // Check if this is a GitHub-style callout
+                    if let Some(callout) = Self::try_parse_callout(&blocks) {
+                        self.push_block(callout);
+                    } else {
+                        self.push_block(Block::BlockQuote { blocks });
+                    }
                 }
             }
             TagEnd::CodeBlock => {
@@ -335,6 +340,63 @@ impl MarkdownConverter {
         } else {
             self.document.blocks.push(block);
         }
+    }
+
+    /// Try to parse a blockquote as a GitHub-style callout
+    /// Syntax: > [!NOTE] or > [!WARNING] etc.
+    fn try_parse_callout(blocks: &[Block]) -> Option<Block> {
+        if blocks.is_empty() {
+            return None;
+        }
+
+        // Check if first block is a paragraph starting with [!TYPE]
+        if let Block::Paragraph { content } = &blocks[0] {
+            if let Some(Inline::Text(text)) = content.first() {
+                let trimmed = text.trim_start();
+                if trimmed.starts_with("[!") {
+                    // Extract the callout type
+                    if let Some(end_idx) = trimmed.find(']') {
+                        let type_str = &trimmed[2..end_idx];
+                        let kind = match type_str.to_uppercase().as_str() {
+                            "NOTE" => CalloutKind::Note,
+                            "WARNING" => CalloutKind::Warning,
+                            "IMPORTANT" => CalloutKind::Important,
+                            "TIP" => CalloutKind::Tip,
+                            "CAUTION" => CalloutKind::Caution,
+                            _ => return None, // Unknown callout type
+                        };
+
+                        // Remove the [!TYPE] marker from the first paragraph
+                        let mut remaining_blocks = blocks.to_vec();
+                        if let Block::Paragraph { content } = &mut remaining_blocks[0] {
+                            if let Some(Inline::Text(text)) = content.first_mut() {
+                                // Remove [!TYPE] and any following whitespace
+                                let after_marker = &trimmed[end_idx + 1..].trim_start();
+                                *text = after_marker.to_string();
+
+                                // If the text is now empty, remove it
+                                if text.is_empty() {
+                                    content.remove(0);
+                                }
+
+                                // If paragraph is now empty, remove it
+                                if content.is_empty() {
+                                    remaining_blocks.remove(0);
+                                }
+                            }
+                        }
+
+                        return Some(Block::Callout {
+                            kind,
+                            title: None,  // Could extract from after [!TYPE] if desired
+                            content: remaining_blocks,
+                        });
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn finish(self) -> Document {
