@@ -187,17 +187,20 @@ fn render_node(
                 node.rect.height.min(area.height.saturating_sub(display_y))
             };
 
-            // Render background if specified
+            // Render background if specified (using filled spaces instead of Block)
             if let Some(bg) = callout_style.background {
-                let bg_block = Block::default()
-                    .style(Style::default().bg(to_ratatui_color(bg)));
-                let bg_area = ratatui::layout::Rect {
-                    x: node.rect.x,
-                    y: visible_start_y,
-                    width: node.rect.width,
-                    height: visible_height,
-                };
-                frame.render_widget(bg_block, bg_area);
+                let bg_style = Style::default().bg(to_ratatui_color(bg));
+                for i in 0..visible_height {
+                    let bg_line = " ".repeat(node.rect.width as usize);
+                    let bg_span = Span::styled(bg_line, bg_style);
+                    let bg_line_area = ratatui::layout::Rect {
+                        x: node.rect.x,
+                        y: visible_start_y + i,
+                        width: node.rect.width,
+                        height: 1,
+                    };
+                    frame.render_widget(Paragraph::new(RatatuiText::from(bg_span)), bg_line_area);
+                }
             }
 
             // Draw left border manually using vertical line characters

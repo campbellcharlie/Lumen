@@ -8,6 +8,19 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use std::time::{Duration, Instant};
 
 fn main() -> io::Result<()> {
+    // Set up panic handler to ensure terminal is always restored
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // Try to restore terminal on panic
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            io::stdout(),
+            crossterm::terminal::LeaveAlternateScreen,
+            crossterm::cursor::Show
+        );
+        original_hook(panic_info);
+    }));
+
     // Parse command-line arguments
     let args: Vec<String> = std::env::args().collect();
 
