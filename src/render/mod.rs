@@ -529,7 +529,17 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
         _ => {}
     }
 
-    Span::styled(segment.text.as_str(), style)
+    // Wrap in OSC 8 clickable link if URL is present
+    if let Some(url) = &segment.link_url {
+        let wrapped_text = format!(
+            "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+            url,
+            segment.text
+        );
+        Span::styled(wrapped_text, style)
+    } else {
+        Span::styled(segment.text.as_str(), style)
+    }
 }
 
 fn to_ratatui_color(color: Color) -> RatatuiColor {

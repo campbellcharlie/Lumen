@@ -18,6 +18,7 @@ pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme) -> Vec<Lin
             max_width,
             &mut lines,
             TextStyle::default(),
+            None,
             theme,
         );
     }
@@ -42,6 +43,7 @@ fn layout_inline(
     max_width: u16,
     lines: &mut Vec<Line>,
     base_style: TextStyle,
+    link_url: Option<String>,
     theme: &Theme,
 ) {
     match inline {
@@ -53,6 +55,7 @@ fn layout_inline(
                 max_width,
                 lines,
                 base_style,
+                link_url,
             );
         }
         Inline::Strong(nested) => {
@@ -68,6 +71,7 @@ fn layout_inline(
                     max_width,
                     lines,
                     style,
+                    link_url.clone(),
                     theme,
                 );
             }
@@ -85,6 +89,7 @@ fn layout_inline(
                     max_width,
                     lines,
                     style,
+                    link_url.clone(),
                     theme,
                 );
             }
@@ -99,6 +104,7 @@ fn layout_inline(
                     max_width,
                     lines,
                     base_style,
+                    link_url.clone(),
                     theme,
                 );
             }
@@ -116,6 +122,7 @@ fn layout_inline(
                 max_width,
                 lines,
                 style,
+                link_url,
             );
         }
         Inline::Link { text, url, .. } => {
@@ -123,6 +130,7 @@ fn layout_inline(
                 foreground: Some(theme.inlines.link.foreground),
                 ..base_style
             };
+            // Pass the URL to nested content so it becomes clickable
             for inner in text {
                 layout_inline(
                     inner,
@@ -131,11 +139,12 @@ fn layout_inline(
                     max_width,
                     lines,
                     style,
+                    Some(url.clone()),
                     theme,
                 );
             }
 
-            // Optionally show URL inline
+            // Optionally show URL inline (but don't make it clickable)
             if matches!(
                 theme.inlines.link.show_url,
                 crate::theme::UrlDisplayMode::Inline
@@ -151,6 +160,7 @@ fn layout_inline(
                         foreground: Some(theme.colors.muted),
                         ..base_style
                     },
+                    None,  // Don't make the displayed URL itself clickable
                 );
             }
         }
@@ -167,6 +177,7 @@ fn layout_inline(
                     foreground: Some(theme.colors.muted),
                     ..base_style
                 },
+                None,
             );
         }
         Inline::LineBreak => {
@@ -194,6 +205,7 @@ fn layout_text_content(
     max_width: u16,
     lines: &mut Vec<Line>,
     style: TextStyle,
+    link_url: Option<String>,
 ) {
     // Split by whitespace for word wrapping
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -212,7 +224,7 @@ fn layout_text_content(
 
         // Add space before word (if not at line start)
         if *current_width > 0 {
-            current_line.add_segment(" ".to_string(), style);
+            current_line.add_segment_with_link(" ".to_string(), style, link_url.clone());
             *current_width += 1;
         }
 
@@ -230,7 +242,7 @@ fn layout_text_content(
                 }
 
                 let chunk = &remaining[..chunk_len];
-                current_line.add_segment(chunk.to_string(), style);
+                current_line.add_segment_with_link(chunk.to_string(), style, link_url.clone());
                 *current_width += chunk_len as u16;
                 remaining = &remaining[chunk_len..];
 
@@ -242,7 +254,7 @@ fn layout_text_content(
             }
         } else {
             // Normal word, add to line
-            current_line.add_segment(word.to_string(), style);
+            current_line.add_segment_with_link(word.to_string(), style, link_url.clone());
             *current_width += word_len;
         }
     }

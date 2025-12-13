@@ -100,7 +100,11 @@ impl Line {
     }
 
     pub fn add_segment(&mut self, text: String, style: TextStyle) {
-        self.segments.push(TextSegment { text, style });
+        self.add_segment_with_link(text, style, None);
+    }
+
+    pub fn add_segment_with_link(&mut self, text: String, style: TextStyle, link_url: Option<String>) {
+        self.segments.push(TextSegment { text, style, link_url });
     }
 
     pub fn width(&self) -> u16 {
@@ -117,6 +121,7 @@ impl Line {
 pub struct TextSegment {
     pub text: String,
     pub style: TextStyle,
+    pub link_url: Option<String>,  // For OSC 8 clickable links
 }
 
 /// Computed style for a layout node
