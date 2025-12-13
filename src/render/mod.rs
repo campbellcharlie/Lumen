@@ -598,25 +598,28 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
         _ => {}
     }
 
-    // Handle iTerm2 inline images
-    if let (Some(image_url), Some(image_alt)) = (&segment.image_url, &segment.image_alt) {
-        if let Some(iterm2_seq) = try_render_iterm2_image(image_url, image_alt) {
-            return Span::styled(iterm2_seq, style);
-        }
-        // Fall through to text rendering if image loading fails
-    }
+    // TEMPORARILY DISABLED: iTerm2 inline images (testing if escape sequences cause artifacts)
+    // if let (Some(image_url), Some(image_alt)) = (&segment.image_url, &segment.image_alt) {
+    //     if let Some(iterm2_seq) = try_render_iterm2_image(image_url, image_alt) {
+    //         return Span::styled(iterm2_seq, style);
+    //     }
+    //     // Fall through to text rendering if image loading fails
+    // }
 
-    // Wrap in OSC 8 clickable link if URL is present
-    if let Some(url) = &segment.link_url {
-        let wrapped_text = format!(
-            "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-            url,
-            segment.text
-        );
-        Span::styled(wrapped_text, style)
-    } else {
-        Span::styled(segment.text.as_str(), style)
-    }
+    // TEMPORARILY DISABLED: OSC 8 clickable links (testing if escape sequences cause artifacts)
+    // if let Some(url) = &segment.link_url {
+    //     let wrapped_text = format!(
+    //         "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+    //         url,
+    //         segment.text
+    //     );
+    //     Span::styled(wrapped_text, style)
+    // } else {
+    //     Span::styled(segment.text.as_str(), style)
+    // }
+
+    // For now, just render the text without escape sequences
+    Span::styled(segment.text.as_str(), style)
 }
 
 fn to_ratatui_color(color: Color) -> RatatuiColor {
