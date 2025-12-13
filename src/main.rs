@@ -1,7 +1,7 @@
 //! Lumen: Interactive Markdown viewer
 
 use lumen::{layout_document, parse_markdown, render, LayoutTree, Theme};
-use lumen::layout::Viewport;
+use lumen::layout::{Viewport, LayoutElement};
 use std::fs;
 use std::io;
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
@@ -49,13 +49,14 @@ fn main() -> io::Result<()> {
     let frame_duration = Duration::from_millis(16);
     let mut last_render = Instant::now();
     let mut needs_render = true;
+    let mut show_help = false;
 
     // Main event loop
     loop {
         // Render only if needed and enough time has passed
         let now = Instant::now();
         if needs_render && now.duration_since(last_render) >= frame_duration {
-            render::render(&mut terminal, &tree, &theme)?;
+            render::render(&mut terminal, &tree, &theme, show_help)?;
             last_render = now;
             needs_render = false;
         }
@@ -63,10 +64,19 @@ fn main() -> io::Result<()> {
         // Poll for events with short timeout
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
-                match handle_key(key, &mut tree) {
-                    Action::Quit => break,
-                    Action::Continue => {
-                        needs_render = true;  // Mark that we need to render
+                // Handle help menu toggle specially
+                if key.code == KeyCode::Char('h') {
+                    show_help = !show_help;
+                    needs_render = true;
+                } else if show_help && key.code == KeyCode::Esc {
+                    show_help = false;
+                    needs_render = true;
+                } else if !show_help {
+                    match handle_key(key, &mut tree) {
+                        Action::Quit => break,
+                        Action::Continue => {
+                            needs_render = true;  // Mark that we need to render
+                        }
                     }
                 }
             } else if let Event::Resize(_, _) = event::read()? {
@@ -124,6 +134,47 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree) -> Action {
             tree.viewport.scroll_to(tree.document_height());
             Action::Continue
         }
+        KeyCode::Char('n') => {
+            // Jump to next heading
+            jump_to_next_heading(tree, true);
+            Action::Continue
+        }
+        KeyCode::Char('p') => {
+            // Jump to previous heading
+            jump_to_next_heading(tree, false);
+            Action::Continue
+        }
         _ => Action::Continue,
+    }
+}
+
+fn jump_to_next_heading(tree: &mut LayoutTree, forward: bool) {
+    let current_y = tree.viewport.scroll_y;
+    let mut headings: Vec<u16> = Vec::new();
+
+    // Collect all heading positions
+    fn collect_headings(node: &lumen::layout::LayoutNode, headings: &mut Vec<u16>) {
+        if matches!(node.element, LayoutElement::Heading { .. }) {
+            headings.push(node.rect.y);
+        }
+        for child in &node.children {
+            collect_headings(child, headings);
+        }
+    }
+
+    collect_headings(&tree.root, &mut headings);
+    headings.sort();
+
+    // Find next or previous heading
+    if forward {
+        // Find first heading after current position
+        if let Some(&next_y) = headings.iter().find(|&&y| y > current_y) {
+            tree.viewport.scroll_to(next_y);
+        }
+    } else {
+        // Find last heading before current position
+        if let Some(&prev_y) = headings.iter().rev().find(|&&y| y < current_y) {
+            tree.viewport.scroll_to(prev_y);
+        }
     }
 }

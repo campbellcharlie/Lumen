@@ -40,7 +40,7 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
 }
 
 /// Render layout tree to terminal
-pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme) -> io::Result<()> {
+pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme, show_help: bool) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
 
@@ -53,6 +53,11 @@ pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme) -> io::
 
         // Render status bar
         render_status_bar(frame, tree, area);
+
+        // Render help menu if active
+        if show_help {
+            render_help_menu(frame, area);
+        }
     })?;
     Ok(())
 }
@@ -336,8 +341,16 @@ fn render_status_bar(
         }
     );
 
+    let help_text = "Press 'h' for help";
+
+    // Pad status bar to fill entire width
+    let padding_len = area.width as usize - status.len() - help_text.len();
+    let padding = " ".repeat(padding_len);
+
+    let full_status = format!("{}{}{}", status, padding, help_text);
+
     let status_span = Span::styled(
-        status,
+        full_status,
         Style::default()
             .bg(RatatuiColor::DarkGray)
             .fg(RatatuiColor::White)
@@ -352,6 +365,79 @@ fn render_status_bar(
     };
 
     frame.render_widget(Paragraph::new(status_text), status_area);
+}
+
+fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    let help_text = vec![
+        "LUMEN - Keyboard Shortcuts",
+        "",
+        "Navigation:",
+        "  j / ↓        Scroll down one line",
+        "  k / ↑        Scroll up one line",
+        "  d            Scroll down half page",
+        "  u            Scroll up half page",
+        "  Space        Scroll down one page",
+        "  PageDown     Scroll down one page",
+        "  PageUp       Scroll up one page",
+        "  g / Home     Go to top of document",
+        "  G / End      Go to bottom of document",
+        "",
+        "Header Navigation:",
+        "  n            Jump to next heading",
+        "  p            Jump to previous heading",
+        "",
+        "Other:",
+        "  h            Toggle this help menu",
+        "  q / Esc      Quit",
+        "",
+        "Press 'h' or Esc to close this menu",
+    ];
+
+    // Calculate centered position
+    let width = 60u16.min(area.width);
+    let height = (help_text.len() as u16 + 2).min(area.height);
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+
+    // Create help menu area
+    let help_area = ratatui::layout::Rect {
+        x,
+        y,
+        width,
+        height,
+    };
+
+    // Create bordered block
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(RatatuiColor::Cyan))
+        .style(Style::default().bg(RatatuiColor::Black));
+
+    // Create text
+    let text: Vec<ratatui::text::Line> = help_text
+        .iter()
+        .map(|line| {
+            if line.starts_with("LUMEN") {
+                ratatui::text::Line::from(Span::styled(
+                    *line,
+                    Style::default().fg(RatatuiColor::Cyan).add_modifier(Modifier::BOLD),
+                ))
+            } else if line.ends_with(':') {
+                ratatui::text::Line::from(Span::styled(
+                    *line,
+                    Style::default().fg(RatatuiColor::Yellow).add_modifier(Modifier::BOLD),
+                ))
+            } else {
+                ratatui::text::Line::from(*line)
+            }
+        })
+        .collect();
+
+    let paragraph = Paragraph::new(text)
+        .block(block)
+        .style(Style::default().fg(RatatuiColor::White));
+
+    frame.render_widget(paragraph, help_area);
 }
 
 fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a> {

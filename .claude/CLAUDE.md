@@ -65,6 +65,33 @@ For small changes, keep this to 5–8 bullets max.
 
 ---
 
+## Temporal Awareness (MANDATORY)
+
+Before answering any question involving:
+- dates
+- timelines
+- versions
+- releases
+- news
+- “current” behavior
+- availability
+- policy or pricing
+
+You MUST:
+
+1. Determine the **current date at runtime**
+2. Treat all prior knowledge as potentially outdated
+3. Anchor searches, reasoning, and comparisons to **the current year**
+4. Explicitly adjust queries to include the correct year when relevant
+
+If you catch yourself assuming a prior year (e.g. 2024):
+- Stop
+- Correct it
+- Re-evaluate the answer
+
+Failure to ground answers in the current date is a correctness bug.
+
+
 ## Tooling & Environment Assumptions
 
 Unless stated otherwise:
