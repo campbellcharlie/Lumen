@@ -100,30 +100,32 @@ enum Action {
 }
 
 fn handle_key(key: KeyEvent, tree: &mut LayoutTree) -> Action {
+    let doc_height = tree.document_height();
+
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
         KeyCode::Char('j') | KeyCode::Down => {
-            tree.viewport.scroll_by(1);
+            tree.viewport.scroll_by_clamped(1, doc_height);
             Action::Continue
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            tree.viewport.scroll_by(-1);
+            tree.viewport.scroll_by_clamped(-1, doc_height);
             Action::Continue
         }
         KeyCode::Char('d') => {
-            tree.viewport.scroll_by(tree.viewport.height as i16 / 2);
+            tree.viewport.scroll_by_clamped(tree.viewport.height as i16 / 2, doc_height);
             Action::Continue
         }
         KeyCode::Char('u') => {
-            tree.viewport.scroll_by(-(tree.viewport.height as i16 / 2));
+            tree.viewport.scroll_by_clamped(-(tree.viewport.height as i16 / 2), doc_height);
             Action::Continue
         }
         KeyCode::PageDown | KeyCode::Char(' ') => {
-            tree.viewport.scroll_by(tree.viewport.height as i16);
+            tree.viewport.scroll_by_clamped(tree.viewport.height as i16, doc_height);
             Action::Continue
         }
         KeyCode::PageUp => {
-            tree.viewport.scroll_by(-(tree.viewport.height as i16));
+            tree.viewport.scroll_by_clamped(-(tree.viewport.height as i16), doc_height);
             Action::Continue
         }
         KeyCode::Home | KeyCode::Char('g') => {
@@ -131,7 +133,7 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree) -> Action {
             Action::Continue
         }
         KeyCode::End | KeyCode::Char('G') => {
-            tree.viewport.scroll_to(tree.document_height());
+            tree.viewport.scroll_to_clamped(tree.document_height(), doc_height);
             Action::Continue
         }
         KeyCode::Char('n') => {
@@ -150,6 +152,7 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree) -> Action {
 
 fn jump_to_next_heading(tree: &mut LayoutTree, forward: bool) {
     let current_y = tree.viewport.scroll_y;
+    let doc_height = tree.document_height();
     let mut headings: Vec<u16> = Vec::new();
 
     // Collect all heading positions
@@ -169,12 +172,12 @@ fn jump_to_next_heading(tree: &mut LayoutTree, forward: bool) {
     if forward {
         // Find first heading after current position
         if let Some(&next_y) = headings.iter().find(|&&y| y > current_y) {
-            tree.viewport.scroll_to(next_y);
+            tree.viewport.scroll_to_clamped(next_y, doc_height);
         }
     } else {
         // Find last heading before current position
         if let Some(&prev_y) = headings.iter().rev().find(|&&y| y < current_y) {
-            tree.viewport.scroll_to(prev_y);
+            tree.viewport.scroll_to_clamped(prev_y, doc_height);
         }
     }
 }

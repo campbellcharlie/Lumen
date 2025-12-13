@@ -239,8 +239,20 @@ impl Viewport {
         self.scroll_y = y;
     }
 
+    pub fn scroll_to_clamped(&mut self, y: u16, doc_height: u16) {
+        // Clamp scroll position so viewport doesn't go past document end
+        let max_scroll = doc_height.saturating_sub(self.height);
+        self.scroll_y = y.min(max_scroll);
+    }
+
     pub fn scroll_by(&mut self, delta_y: i16) {
         self.scroll_y = (self.scroll_y as i16 + delta_y).max(0) as u16;
+    }
+
+    pub fn scroll_by_clamped(&mut self, delta_y: i16, doc_height: u16) {
+        let new_y = (self.scroll_y as i16 + delta_y).max(0) as u16;
+        let max_scroll = doc_height.saturating_sub(self.height);
+        self.scroll_y = new_y.min(max_scroll);
     }
 
     pub fn contains_point(&self, x: u16, y: u16) -> bool {
