@@ -70,15 +70,31 @@ fn render_node(
     scroll_y: u16,
     area: ratatui::layout::Rect,
 ) {
-    // Adjust for scroll
-    if node.rect.y < scroll_y {
-        return; // Above viewport
-    }
-
+    // Calculate display position
     let display_y = node.rect.y.saturating_sub(scroll_y);
 
-    if display_y >= area.height {
-        return; // Below viewport
+    // For container elements (callouts, blockquotes, lists), check if ANY part is visible
+    let is_container = matches!(
+        node.element,
+        LayoutElement::Callout { .. }
+            | LayoutElement::BlockQuote
+            | LayoutElement::List { .. }
+            | LayoutElement::ListItem { .. }
+            | LayoutElement::Table { .. }
+            | LayoutElement::TableRow { .. }
+    );
+
+    if is_container {
+        // For containers, check if the bottom is above viewport or top is below viewport
+        let node_bottom = node.rect.y + node.rect.height;
+        if node_bottom <= scroll_y || node.rect.y >= scroll_y + area.height {
+            return; // Completely off-screen
+        }
+    } else {
+        // For leaf elements, check if top is visible
+        if node.rect.y < scroll_y || display_y >= area.height {
+            return; // Above or below viewport
+        }
     }
 
     match &node.element {
@@ -154,16 +170,33 @@ fn render_node(
                 CalloutKind::Caution => &theme.blocks.callout.caution,
             };
 
+            // Calculate visible portion of callout
+            let visible_start_y = if node.rect.y < scroll_y {
+                0  // Callout starts above viewport
+            } else {
+                display_y
+            };
+
+            let visible_height = if node.rect.y < scroll_y {
+                // Callout extends above viewport, calculate visible portion
+                let hidden_lines = scroll_y - node.rect.y;
+                node.rect.height.saturating_sub(hidden_lines).min(area.height)
+            } else {
+                // Callout starts in viewport
+                node.rect.height.min(area.height.saturating_sub(display_y))
+            };
+
             // Render border with background
             let block = Block::default()
                 .borders(Borders::LEFT)
+                .border_type(ratatui::widgets::BorderType::Plain)
                 .border_style(Style::default().fg(to_ratatui_color(callout_style.border_color)));
 
             let block_area = ratatui::layout::Rect {
                 x: node.rect.x,
-                y: display_y,
+                y: visible_start_y,
                 width: node.rect.width,
-                height: node.rect.height.min(area.height.saturating_sub(display_y)),
+                height: visible_height,
             };
 
             // Render background if specified
@@ -175,18 +208,20 @@ fn render_node(
 
             frame.render_widget(block, block_area);
 
-            // Render icon at the top left
-            let icon_span = Span::styled(
-                &callout_style.icon,
-                Style::default().fg(to_ratatui_color(callout_style.color))
-            );
-            let icon_area = ratatui::layout::Rect {
-                x: node.rect.x,
-                y: display_y,
-                width: 2,
-                height: 1,
-            };
-            frame.render_widget(Paragraph::new(RatatuiText::from(icon_span)), icon_area);
+            // Render icon at the top left (only if the top of the callout is visible)
+            if node.rect.y >= scroll_y {
+                let icon_span = Span::styled(
+                    &callout_style.icon,
+                    Style::default().fg(to_ratatui_color(callout_style.color))
+                );
+                let icon_area = ratatui::layout::Rect {
+                    x: node.rect.x,
+                    y: display_y,
+                    width: 2,
+                    height: 1,
+                };
+                frame.render_widget(Paragraph::new(RatatuiText::from(icon_span)), icon_area);
+            }
 
             // Render children
             for child in &node.children {
