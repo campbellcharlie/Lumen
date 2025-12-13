@@ -1,0 +1,22 @@
+//! Lumen: A browser-like Markdown document renderer for modern terminals
+//!
+//! # Architecture
+//!
+//! ```text
+//! Markdown → HTML → IR (intermediate representation)
+//!                     ↓
+//!               Theme + Layout Engine
+//!                     ↓
+//!               Terminal Renderer → iTerm2/Kitty/etc.
+//! ```
+//!
+//! # Modules
+//!
+//! - `ir`: Intermediate representation types (Document, Block, Inline)
+//! - `parser`: Markdown → IR conversion
+
+pub mod ir;
+pub mod parser;
+
+pub use ir::Document;
+pub use parser::parse_markdown;
