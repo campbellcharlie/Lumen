@@ -20,9 +20,15 @@ pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -
         &mut hit_regions,
     );
 
+    // Calculate actual document height as the maximum (y + height) of all children
+    let doc_height = root.iter()
+        .map(|n| n.rect.y + n.rect.height)
+        .max()
+        .unwrap_or(0);
+
     let document_node = LayoutNode {
         id: node_counter,
-        rect: Rectangle::new(0, 0, viewport.width, root.iter().map(|n| n.rect.height).sum()),
+        rect: Rectangle::new(0, 0, viewport.width, doc_height),
         element: LayoutElement::Document,
         children: root,
         style: ComputedStyle::default(),
