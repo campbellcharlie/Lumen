@@ -5,7 +5,7 @@ use lumen::layout::Viewport;
 use std::fs;
 use std::io;
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn main() -> io::Result<()> {
     // Parse command-line arguments
@@ -45,24 +45,35 @@ fn main() -> io::Result<()> {
     // Layout document
     let mut tree = layout_document(&document, &theme, viewport);
 
+    // Frame rate limiting - target 60 FPS
+    let frame_duration = Duration::from_millis(16);
+    let mut last_render = Instant::now();
+    let mut needs_render = true;
+
     // Main event loop
     loop {
-        // Render
-        render::render(&mut terminal, &tree, &theme)?;
+        // Render only if needed and enough time has passed
+        let now = Instant::now();
+        if needs_render && now.duration_since(last_render) >= frame_duration {
+            render::render(&mut terminal, &tree, &theme)?;
+            last_render = now;
+            needs_render = false;
+        }
 
-        // Handle events with reduced timeout for smoother scrolling
+        // Poll for events with short timeout
         if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 match handle_key(key, &mut tree) {
                     Action::Quit => break,
                     Action::Continue => {
-                        // No need to re-layout - viewport was already updated
+                        needs_render = true;  // Mark that we need to render
                     }
                 }
             } else if let Event::Resize(_, _) = event::read()? {
                 let size = terminal.size()?;
                 viewport = Viewport::new(size.width, size.height.saturating_sub(1));
                 tree = layout_document(&document, &theme, viewport);
+                needs_render = true;
             }
         }
     }
