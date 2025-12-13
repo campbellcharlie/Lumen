@@ -1,0 +1,71 @@
+//! Theme system for Lumen
+//!
+//! Provides a CSS-like theming layer without full CSS complexity.
+//! Themes are declarative token sets that map element types to styles.
+
+pub mod color;
+pub mod types;
+pub mod defaults;
+
+pub use color::{AnsiColor, Color};
+pub use types::*;
+pub use defaults::{docs_theme, neon_theme, minimal_theme};
+
+use std::io;
+
+impl Theme {
+    /// Load a theme from a YAML string
+    pub fn from_yaml(yaml: &str) -> Result<Self, serde_yaml::Error> {
+        serde_yaml::from_str(yaml)
+    }
+
+    /// Load a theme from a YAML file
+    pub fn from_file(path: &str) -> Result<Self, io::Error> {
+        let contents = std::fs::read_to_string(path)?;
+        Self::from_yaml(&contents).map_err(|e| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse theme: {}", e))
+        })
+    }
+
+    /// Serialize theme to YAML string
+    pub fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
+        serde_yaml::to_string(self)
+    }
+
+    /// Get a built-in theme by name
+    pub fn builtin(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            "docs" => Some(docs_theme()),
+            "neon" => Some(neon_theme()),
+            "minimal" => Some(minimal_theme()),
+            _ => None,
+        }
+    }
+
+    /// List all built-in theme names
+    pub fn builtin_names() -> Vec<&'static str> {
+        vec!["docs", "neon", "minimal"]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builtin_themes() {
+        assert!(Theme::builtin("docs").is_some());
+        assert!(Theme::builtin("neon").is_some());
+        assert!(Theme::builtin("minimal").is_some());
+        assert!(Theme::builtin("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_builtin_names() {
+        let names = Theme::builtin_names();
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"docs"));
+        assert!(names.contains(&"neon"));
+        assert!(names.contains(&"minimal"));
+    }
+}

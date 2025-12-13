@@ -1,0 +1,159 @@
+name: Minimal
+version: '1.0'
+colors:
+  foreground: !ansi white
+  background: !ansi black
+  primary: !ansi brightwhite
+  secondary: !ansi white
+  accent: !ansi brightwhite
+  muted: !ansi brightblack
+  error: !ansi red
+  warning: !ansi yellow
+  success: !ansi green
+typography:
+  emphasis: Native
+spacing:
+  paragraph_spacing: 1
+  heading_margin_top: 2
+  heading_margin_bottom: 1
+  list_indent: 2
+  blockquote_indent: 2
+  code_block_padding: 1
+blocks:
+  heading:
+    h1:
+      color: !ansi brightwhite
+      background: null
+      border:
+        style: Ascii
+        color: null
+        sides:
+        - bottom
+      padding:
+      - 0
+      - 0
+      margin:
+      - 2
+      - 1
+      prefix: '# '
+    h2:
+      color: !ansi brightwhite
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '## '
+    h3:
+      color: !ansi white
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '### '
+    h4:
+      color: reset
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '#### '
+    h5:
+      color: reset
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '##### '
+    h6:
+      color: reset
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '###### '
+  paragraph:
+    color: reset
+    margin:
+    - 0
+    - 1
+  code_block:
+    background: reset
+    foreground: !ansi white
+    border:
+      style: Ascii
+      color: null
+      sides:
+      - top
+      - right
+      - bottom
+      - left
+    padding:
+    - 0
+    - 1
+    show_language_badge: false
+  blockquote:
+    color: !ansi brightblack
+    background: null
+    border:
+      style: Ascii
+      color: null
+      sides:
+      - left
+    indent: 2
+  list:
+    marker_color: reset
+    indent: 2
+  table:
+    border_style: Ascii
+    header_background: null
+    header_foreground: !ansi brightwhite
+    row_separator: true
+    padding: 1
+  horizontal_rule:
+    style: Ascii
+    color: !ansi brightblack
+inlines:
+  strong:
+    foreground: null
+    background: null
+    weight: Bold
+    style: Normal
+  emphasis:
+    foreground: null
+    background: null
+    weight: Normal
+    style: Italic
+  code:
+    foreground: !ansi brightwhite
+    background: null
+    weight: Normal
+    style: Normal
+  link:
+    foreground: !ansi white
+    underline: false
+    show_url: Inline
+  strikethrough:
+    foreground: null
+    background: null
+    weight: Normal
+    style: Normal

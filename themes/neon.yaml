@@ -1,0 +1,262 @@
+name: Neon
+version: '1.0'
+colors:
+  foreground: !rgb
+  - 240
+  - 240
+  - 255
+  background: !rgb
+  - 10
+  - 10
+  - 20
+  primary: !rgb
+  - 0
+  - 255
+  - 255
+  secondary: !rgb
+  - 255
+  - 0
+  - 255
+  accent: !rgb
+  - 255
+  - 255
+  - 0
+  muted: !rgb
+  - 100
+  - 100
+  - 120
+  error: !rgb
+  - 255
+  - 50
+  - 100
+  warning: !rgb
+  - 255
+  - 200
+  - 0
+  success: !rgb
+  - 0
+  - 255
+  - 150
+typography:
+  emphasis: Native
+spacing:
+  paragraph_spacing: 1
+  heading_margin_top: 2
+  heading_margin_bottom: 1
+  list_indent: 2
+  blockquote_indent: 2
+  code_block_padding: 1
+blocks:
+  heading:
+    h1:
+      color: !rgb
+      - 0
+      - 255
+      - 255
+      background: null
+      border:
+        style: Rounded
+        color: !rgb
+        - 0
+        - 255
+        - 255
+        sides:
+        - bottom
+      padding:
+      - 0
+      - 0
+      margin:
+      - 2
+      - 1
+      prefix: '▶ '
+    h2:
+      color: !rgb
+      - 255
+      - 0
+      - 255
+      background: null
+      border:
+        style: Rounded
+        color: !rgb
+        - 255
+        - 0
+        - 255
+        sides:
+        - bottom
+      padding:
+      - 0
+      - 0
+      margin:
+      - 2
+      - 1
+      prefix: '■ '
+    h3:
+      color: !rgb
+      - 255
+      - 255
+      - 0
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: '● '
+    h4:
+      color: !rgb
+      - 0
+      - 255
+      - 200
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+    h5:
+      color: !rgb
+      - 255
+      - 150
+      - 255
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+    h6:
+      color: !rgb
+      - 200
+      - 200
+      - 255
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+  paragraph:
+    color: reset
+    margin:
+    - 0
+    - 1
+  code_block:
+    background: !rgb
+    - 20
+    - 20
+    - 40
+    foreground: !rgb
+    - 0
+    - 255
+    - 200
+    border:
+      style: Rounded
+      color: !rgb
+      - 0
+      - 200
+      - 200
+      sides:
+      - top
+      - right
+      - bottom
+      - left
+    padding:
+    - 1
+    - 2
+    show_language_badge: true
+  blockquote:
+    color: !rgb
+    - 200
+    - 200
+    - 255
+    background: !rgb
+    - 20
+    - 20
+    - 40
+    border:
+      style: Heavy
+      color: !rgb
+      - 255
+      - 0
+      - 255
+      sides:
+      - left
+    indent: 2
+  list:
+    marker_color: !rgb
+    - 0
+    - 255
+    - 255
+    indent: 2
+  table:
+    border_style: Rounded
+    header_background: !rgb
+    - 50
+    - 0
+    - 100
+    header_foreground: !rgb
+    - 255
+    - 255
+    - 255
+    row_separator: true
+    padding: 1
+  horizontal_rule:
+    style: Heavy
+    color: !rgb
+    - 0
+    - 255
+    - 255
+inlines:
+  strong:
+    foreground: !rgb
+    - 255
+    - 255
+    - 255
+    background: null
+    weight: Bold
+    style: Normal
+  emphasis:
+    foreground: !rgb
+    - 255
+    - 200
+    - 255
+    background: null
+    weight: Normal
+    style: Italic
+  code:
+    foreground: !rgb
+    - 0
+    - 255
+    - 200
+    background: !rgb
+    - 30
+    - 30
+    - 50
+    weight: Normal
+    style: Normal
+  link:
+    foreground: !rgb
+    - 0
+    - 255
+    - 255
+    underline: true
+    show_url: Hover
+  strikethrough:
+    foreground: !rgb
+    - 120
+    - 120
+    - 140
+    background: null
+    weight: Normal
+    style: Normal

@@ -1,0 +1,259 @@
+name: Docs
+version: '1.0'
+colors:
+  foreground: !rgb
+  - 220
+  - 220
+  - 220
+  background: !rgb
+  - 30
+  - 30
+  - 30
+  primary: !rgb
+  - 100
+  - 180
+  - 255
+  secondary: !rgb
+  - 150
+  - 150
+  - 150
+  accent: !rgb
+  - 255
+  - 200
+  - 100
+  muted: !rgb
+  - 100
+  - 100
+  - 100
+  error: !rgb
+  - 255
+  - 100
+  - 100
+  warning: !rgb
+  - 255
+  - 200
+  - 100
+  success: !rgb
+  - 100
+  - 255
+  - 150
+typography:
+  emphasis: Native
+spacing:
+  paragraph_spacing: 1
+  heading_margin_top: 2
+  heading_margin_bottom: 1
+  list_indent: 2
+  blockquote_indent: 2
+  code_block_padding: 1
+blocks:
+  heading:
+    h1:
+      color: !rgb
+      - 100
+      - 180
+      - 255
+      background: null
+      border:
+        style: Double
+        color: !rgb
+        - 100
+        - 180
+        - 255
+        sides:
+        - bottom
+      padding:
+      - 0
+      - 0
+      margin:
+      - 2
+      - 1
+      prefix: null
+    h2:
+      color: !rgb
+      - 100
+      - 180
+      - 255
+      background: null
+      border:
+        style: Single
+        color: !rgb
+        - 100
+        - 180
+        - 255
+        sides:
+        - bottom
+      padding:
+      - 0
+      - 0
+      margin:
+      - 2
+      - 1
+      prefix: null
+    h3:
+      color: !rgb
+      - 150
+      - 200
+      - 255
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+    h4:
+      color: !rgb
+      - 150
+      - 200
+      - 255
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+    h5:
+      color: !rgb
+      - 180
+      - 200
+      - 220
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+    h6:
+      color: !rgb
+      - 180
+      - 200
+      - 220
+      background: null
+      border: null
+      padding:
+      - 0
+      - 0
+      margin:
+      - 1
+      - 1
+      prefix: null
+  paragraph:
+    color: reset
+    margin:
+    - 0
+    - 1
+  code_block:
+    background: !rgb
+    - 40
+    - 40
+    - 40
+    foreground: !rgb
+    - 220
+    - 220
+    - 220
+    border:
+      style: Rounded
+      color: !rgb
+      - 80
+      - 80
+      - 80
+      sides:
+      - top
+      - right
+      - bottom
+      - left
+    padding:
+    - 1
+    - 2
+    show_language_badge: true
+  blockquote:
+    color: !rgb
+    - 180
+    - 180
+    - 200
+    background: null
+    border:
+      style: Heavy
+      color: !rgb
+      - 100
+      - 100
+      - 150
+      sides:
+      - left
+    indent: 2
+  list:
+    marker_color: !rgb
+    - 100
+    - 180
+    - 255
+    indent: 2
+  table:
+    border_style: Single
+    header_background: !rgb
+    - 50
+    - 50
+    - 80
+    header_foreground: !rgb
+    - 255
+    - 255
+    - 255
+    row_separator: true
+    padding: 1
+  horizontal_rule:
+    style: Single
+    color: !rgb
+    - 100
+    - 100
+    - 100
+inlines:
+  strong:
+    foreground: !rgb
+    - 255
+    - 255
+    - 255
+    background: null
+    weight: Bold
+    style: Normal
+  emphasis:
+    foreground: !rgb
+    - 200
+    - 200
+    - 255
+    background: null
+    weight: Normal
+    style: Italic
+  code:
+    foreground: !rgb
+    - 255
+    - 150
+    - 100
+    background: !rgb
+    - 50
+    - 50
+    - 50
+    weight: Normal
+    style: Normal
+  link:
+    foreground: !rgb
+    - 100
+    - 180
+    - 255
+    underline: true
+    show_url: Hover
+  strikethrough:
+    foreground: !rgb
+    - 150
+    - 150
+    - 150
+    background: null
+    weight: Normal
+    style: Normal
