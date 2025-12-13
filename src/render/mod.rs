@@ -330,24 +330,42 @@ fn render_status_bar(
     tree: &LayoutTree,
     area: ratatui::layout::Rect,
 ) {
-    let status = format!(
-        " Line {}/{} | {}% ",
-        tree.viewport.scroll_y,
-        tree.document_height(),
-        if tree.document_height() > 0 {
-            tree.viewport.scroll_y * 100 / tree.document_height()
-        } else {
-            0
-        }
-    );
+    let doc_height = tree.document_height();
+    let viewport_height = tree.viewport.height;
+    let scroll_y = tree.viewport.scroll_y;
+
+    // Calculate visible line range
+    let top_line = scroll_y + 1;  // +1 for 1-based display
+    let bottom_line = (scroll_y + viewport_height).min(doc_height);
+
+    // Calculate percentage through document
+    let max_scroll = doc_height.saturating_sub(viewport_height);
+    let percentage = if max_scroll > 0 {
+        (scroll_y * 100) / max_scroll
+    } else {
+        100  // If document fits in viewport, we're at 100%
+    };
+
+    let status = if doc_height <= viewport_height {
+        " All ".to_string()
+    } else if scroll_y == 0 {
+        " Top ".to_string()
+    } else if scroll_y >= max_scroll {
+        " Bot ".to_string()
+    } else {
+        format!(" {}% ", percentage)
+    };
+
+    let position = format!("Lines {}-{}/{} ", top_line, bottom_line, doc_height);
 
     let help_text = "Press 'h' for help";
 
     // Pad status bar to fill entire width
-    let padding_len = area.width as usize - status.len() - help_text.len();
+    let total_text_len = status.len() + position.len() + help_text.len();
+    let padding_len = area.width.saturating_sub(total_text_len as u16) as usize;
     let padding = " ".repeat(padding_len);
 
-    let full_status = format!("{}{}{}", status, padding, help_text);
+    let full_status = format!("{}{}{}{}", status, position, padding, help_text);
 
     let status_span = Span::styled(
         full_status,
