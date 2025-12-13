@@ -50,14 +50,13 @@ fn main() -> io::Result<()> {
         // Render
         render::render(&mut terminal, &tree, &theme)?;
 
-        // Handle events
-        if event::poll(Duration::from_millis(100))? {
+        // Handle events with reduced timeout for smoother scrolling
+        if event::poll(Duration::from_millis(16))? {
             if let Event::Key(key) = event::read()? {
                 match handle_key(key, &mut tree) {
                     Action::Quit => break,
                     Action::Continue => {
-                        // Re-layout with updated viewport
-                        tree = layout_document(&document, &theme, tree.viewport);
+                        // No need to re-layout - viewport was already updated
                     }
                 }
             } else if let Event::Resize(_, _) = event::read()? {
