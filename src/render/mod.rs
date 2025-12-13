@@ -598,27 +598,46 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
         _ => {}
     }
 
-    // TEMPORARILY DISABLED: iTerm2 inline images (testing if escape sequences cause artifacts)
-    // if let (Some(image_url), Some(image_alt)) = (&segment.image_url, &segment.image_alt) {
-    //     if let Some(iterm2_seq) = try_render_iterm2_image(image_url, image_alt) {
-    //         return Span::styled(iterm2_seq, style);
-    //     }
-    //     // Fall through to text rendering if image loading fails
-    // }
+    // NOTE: OSC 8 clickable links and iTerm2 inline images are DISABLED by default
+    // because escape sequences interfere with Ratatui's rendering and cause visual
+    // artifacts (dashed lines, terminal corruption).
+    //
+    // These features are fundamentally incompatible with how Ratatui manages the
+    // terminal screen buffer. Enable them at your own risk via environment variables:
+    //
+    //   LUMEN_ENABLE_LINKS=1      - Enable OSC 8 clickable links
+    //   LUMEN_ENABLE_IMAGES=1     - Enable iTerm2 inline images
+    //
+    // Known issues when enabled:
+    // - Horizontal dashed lines appear when scrolling
+    // - Terminal may become corrupted requiring `reset`
+    // - Width calculations break, causing layout issues
 
-    // TEMPORARILY DISABLED: OSC 8 clickable links (testing if escape sequences cause artifacts)
-    // if let Some(url) = &segment.link_url {
-    //     let wrapped_text = format!(
-    //         "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-    //         url,
-    //         segment.text
-    //     );
-    //     Span::styled(wrapped_text, style)
-    // } else {
-    //     Span::styled(segment.text.as_str(), style)
-    // }
+    let enable_images = std::env::var("LUMEN_ENABLE_IMAGES").is_ok();
+    let enable_links = std::env::var("LUMEN_ENABLE_LINKS").is_ok();
 
-    // For now, just render the text without escape sequences
+    // iTerm2 inline images (experimental, disabled by default)
+    if enable_images {
+        if let (Some(image_url), Some(image_alt)) = (&segment.image_url, &segment.image_alt) {
+            if let Some(iterm2_seq) = try_render_iterm2_image(image_url, image_alt) {
+                return Span::styled(iterm2_seq, style);
+            }
+        }
+    }
+
+    // OSC 8 clickable links (experimental, disabled by default)
+    if enable_links {
+        if let Some(url) = &segment.link_url {
+            let wrapped_text = format!(
+                "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
+                url,
+                segment.text
+            );
+            return Span::styled(wrapped_text, style);
+        }
+    }
+
+    // Default: render text without escape sequences
     Span::styled(segment.text.as_str(), style)
 }
 
