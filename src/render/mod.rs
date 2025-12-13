@@ -99,7 +99,7 @@ fn render_node(
             let marker_area = ratatui::layout::Rect {
                 x: node.rect.x,
                 y: display_y,
-                width: marker.len() as u16,
+                width: marker.chars().count() as u16,  // Use char count, not byte length
                 height: 1,
             };
 
