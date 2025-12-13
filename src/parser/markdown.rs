@@ -219,6 +219,12 @@ impl MarkdownConverter {
                 }
             }
             TagEnd::Item => {
+                // For tight lists, wrap any accumulated inlines in a paragraph
+                let content = std::mem::take(&mut self.current_inlines);
+                if !content.is_empty() {
+                    self.push_block(Block::Paragraph { content });
+                }
+
                 if let Some(BlockContext::ListItem { blocks, task }) = self.block_stack.pop() {
                     if let Some(BlockContext::List { items, .. }) = self.block_stack.last_mut() {
                         items.push(ListItem { content: blocks, task });

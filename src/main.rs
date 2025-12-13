@@ -59,11 +59,6 @@ fn main() -> io::Result<()> {
                         // Re-layout with updated viewport
                         tree = layout_document(&document, &theme, tree.viewport);
                     }
-                    Action::Resize => {
-                        let size = terminal.size()?;
-                        viewport = Viewport::new(size.width, size.height.saturating_sub(1));
-                        tree = layout_document(&document, &theme, viewport);
-                    }
                 }
             } else if let Event::Resize(_, _) = event::read()? {
                 let size = terminal.size()?;
@@ -82,7 +77,6 @@ fn main() -> io::Result<()> {
 enum Action {
     Quit,
     Continue,
-    Resize,
 }
 
 fn handle_key(key: KeyEvent, tree: &mut LayoutTree) -> Action {

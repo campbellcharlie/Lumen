@@ -1,8 +1,8 @@
 //! Inline text layout and wrapping
 
-use super::types::{Line, TextSegment, TextStyle};
+use super::types::{Line, TextStyle};
 use crate::ir::Inline;
-use crate::theme::{Color, FontStyle, FontWeight, Theme};
+use crate::theme::{FontStyle, FontWeight, Theme};
 
 /// Layout inline elements into wrapped lines
 pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme) -> Vec<Line> {

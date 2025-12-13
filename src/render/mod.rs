@@ -1,12 +1,12 @@
 //! Terminal rendering
 
 use crate::layout::{LayoutElement, LayoutNode, LayoutTree, TextSegment, Line};
-use crate::theme::{BorderStyle, Color, FontStyle, FontWeight, Theme};
+use crate::theme::{Color, FontStyle, FontWeight, Theme};
 use ratatui::{
     backend::CrosstermBackend,
     style::{Color as RatatuiColor, Modifier, Style},
     text::{Span, Text as RatatuiText},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph},
     Terminal as RatatuiTerminal,
 };
 use std::io;
@@ -135,7 +135,7 @@ fn render_node(
                 render_node(frame, child, theme, scroll_y, area);
             }
         }
-        LayoutElement::TableRow { is_header } => {
+        LayoutElement::TableRow { is_header: _ } => {
             for child in &node.children {
                 render_node(frame, child, theme, scroll_y, area);
             }
@@ -175,7 +175,7 @@ fn render_heading(
     text: &str,
     theme: &Theme,
     display_y: u16,
-    area: ratatui::layout::Rect,
+    _area: ratatui::layout::Rect,
 ) {
     let heading_style = match level {
         1 => &theme.blocks.heading.h1,
@@ -324,7 +324,7 @@ fn render_status_bar(
         tree.viewport.scroll_y,
         tree.document_height(),
         if tree.document_height() > 0 {
-            (tree.viewport.scroll_y * 100 / tree.document_height())
+            tree.viewport.scroll_y * 100 / tree.document_height()
         } else {
             0
         }
@@ -348,7 +348,7 @@ fn render_status_bar(
     frame.render_widget(Paragraph::new(status_text), status_area);
 }
 
-fn text_segment_to_span<'a>(segment: &'a TextSegment, theme: &Theme) -> Span<'a> {
+fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a> {
     let mut style = Style::default();
 
     if let Some(fg) = segment.style.foreground {
