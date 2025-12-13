@@ -130,7 +130,7 @@ pub fn docs_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: Some(Color::rgb(200, 200, 255)),
-                background: None,
+                background: Some(Color::rgb(40, 40, 60)),  // Subtle blue-tinted band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
@@ -272,7 +272,7 @@ pub fn neon_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: Some(Color::rgb(255, 200, 255)),
-                background: None,
+                background: Some(Color::rgb(60, 40, 60)),  // Subtle magenta-tinted band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
@@ -407,7 +407,7 @@ pub fn minimal_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: None,
-                background: None,
+                background: Some(Color::Ansi256(236)),  // Subtle gray band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
