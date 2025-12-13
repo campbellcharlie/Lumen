@@ -434,6 +434,9 @@ fn block_margin_bottom(block: &Block, theme: &Theme) -> u16 {
         Block::Paragraph { .. } => theme.spacing.paragraph_spacing,
         Block::Heading { .. } => theme.spacing.heading_margin_bottom,
         Block::CodeBlock { .. } => 1,
+        Block::List { .. } => 1,  // Add spacing after lists
+        Block::BlockQuote { .. } => 1,  // Add spacing after blockquotes
+        Block::Table { .. } => 1,  // Add spacing after tables
         _ => 0,
     }
 }

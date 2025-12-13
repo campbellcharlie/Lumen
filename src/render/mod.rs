@@ -91,15 +91,21 @@ fn render_node(
             }
         }
         LayoutElement::ListItem { marker, .. } => {
-            // Render marker
+            // Render marker - only style the marker character, not trailing space
+            let marker_char = marker.trim_end();
             let marker_style = Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
-            let marker_span = Span::styled(marker.clone(), marker_style);
-            let marker_text = RatatuiText::from(marker_span);
+
+            // Create spans: styled marker + unstyled space
+            let spans = vec![
+                Span::styled(marker_char.to_string(), marker_style),
+                Span::raw(" "),
+            ];
+            let marker_text = RatatuiText::from(ratatui::text::Line::from(spans));
 
             let marker_area = ratatui::layout::Rect {
                 x: node.rect.x,
                 y: display_y,
-                width: marker.chars().count() as u16,  // Use char count, not byte length
+                width: marker.chars().count() as u16,
                 height: 1,
             };
 
