@@ -164,20 +164,23 @@ fn layout_inline(
                 );
             }
         }
-        Inline::Image { alt, .. } => {
-            // Images rendered as [IMAGE: alt] in text layout
+        Inline::Image { url, alt, .. } => {
+            // For iTerm2 inline images, we pass the image info
+            // The renderer will attempt to load and display the image
+            // If it fails, it will fall back to the text
             let image_text = format!("[IMAGE: {}]", alt);
-            layout_text_content(
-                &image_text,
-                current_line,
-                current_width,
-                max_width,
-                lines,
-                TextStyle {
-                    foreground: Some(theme.colors.muted),
-                    ..base_style
-                },
+            let style = TextStyle {
+                foreground: Some(theme.colors.muted),
+                ..base_style
+            };
+
+            // Add segment with image metadata
+            current_line.add_segment_full(
+                image_text,
+                style,
                 None,
+                Some(url.clone()),
+                Some(alt.clone()),
             );
         }
         Inline::LineBreak => {

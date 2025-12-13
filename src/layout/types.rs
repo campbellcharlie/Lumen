@@ -100,11 +100,28 @@ impl Line {
     }
 
     pub fn add_segment(&mut self, text: String, style: TextStyle) {
-        self.add_segment_with_link(text, style, None);
+        self.add_segment_full(text, style, None, None, None);
     }
 
     pub fn add_segment_with_link(&mut self, text: String, style: TextStyle, link_url: Option<String>) {
-        self.segments.push(TextSegment { text, style, link_url });
+        self.add_segment_full(text, style, link_url, None, None);
+    }
+
+    pub fn add_segment_full(
+        &mut self,
+        text: String,
+        style: TextStyle,
+        link_url: Option<String>,
+        image_url: Option<String>,
+        image_alt: Option<String>,
+    ) {
+        self.segments.push(TextSegment {
+            text,
+            style,
+            link_url,
+            image_url,
+            image_alt,
+        });
     }
 
     pub fn width(&self) -> u16 {
@@ -122,6 +139,8 @@ pub struct TextSegment {
     pub text: String,
     pub style: TextStyle,
     pub link_url: Option<String>,  // For OSC 8 clickable links
+    pub image_url: Option<String>,  // For iTerm2 inline images
+    pub image_alt: Option<String>,  // Alt text for images
 }
 
 /// Computed style for a layout node

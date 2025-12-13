@@ -10,6 +10,8 @@ use ratatui::{
     Terminal as RatatuiTerminal,
 };
 use std::io;
+use std::fs;
+use std::path::Path;
 
 pub type Terminal = RatatuiTerminal<CrosstermBackend<io::Stdout>>;
 
@@ -529,6 +531,14 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
         _ => {}
     }
 
+    // Handle iTerm2 inline images
+    if let (Some(image_url), Some(image_alt)) = (&segment.image_url, &segment.image_alt) {
+        if let Some(iterm2_seq) = try_render_iterm2_image(image_url, image_alt) {
+            return Span::styled(iterm2_seq, style);
+        }
+        // Fall through to text rendering if image loading fails
+    }
+
     // Wrap in OSC 8 clickable link if URL is present
     if let Some(url) = &segment.link_url {
         let wrapped_text = format!(
@@ -569,4 +579,32 @@ fn to_ratatui_color(color: Color) -> RatatuiColor {
             }
         }
     }
+}
+
+/// Try to render an image as an iTerm2 inline image
+/// Returns the iTerm2 escape sequence if successful, None otherwise
+fn try_render_iterm2_image(image_url: &str, _alt: &str) -> Option<String> {
+    // Only support local file paths for security
+    let path = Path::new(image_url);
+
+    // Check if it's a local file (not a URL)
+    if image_url.starts_with("http://") || image_url.starts_with("https://") {
+        return None;
+    }
+
+    // Try to read the file
+    let image_data = fs::read(path).ok()?;
+
+    // Base64 encode the image
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    let encoded = STANDARD.encode(&image_data);
+
+    // iTerm2 inline image protocol:
+    // ESC]1337;File=inline=1;width=40;preserveAspectRatio=1:[base64]^G
+    // width is in character cells
+    Some(format!(
+        "\x1b]1337;File=inline=1;width=40;preserveAspectRatio=1:{}\x07",
+        encoded
+    ))
 }
