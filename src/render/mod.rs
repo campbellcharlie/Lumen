@@ -186,27 +186,31 @@ fn render_node(
                 node.rect.height.min(area.height.saturating_sub(display_y))
             };
 
-            // Render border with background
-            let block = Block::default()
-                .borders(Borders::LEFT)
-                .border_type(ratatui::widgets::BorderType::Plain)
-                .border_style(Style::default().fg(to_ratatui_color(callout_style.border_color)));
-
-            let block_area = ratatui::layout::Rect {
-                x: node.rect.x,
-                y: visible_start_y,
-                width: node.rect.width,
-                height: visible_height,
-            };
-
             // Render background if specified
             if let Some(bg) = callout_style.background {
                 let bg_block = Block::default()
                     .style(Style::default().bg(to_ratatui_color(bg)));
-                frame.render_widget(bg_block, block_area);
+                let bg_area = ratatui::layout::Rect {
+                    x: node.rect.x,
+                    y: visible_start_y,
+                    width: node.rect.width,
+                    height: visible_height,
+                };
+                frame.render_widget(bg_block, bg_area);
             }
 
-            frame.render_widget(block, block_area);
+            // Draw left border manually using vertical line characters
+            let border_style = Style::default().fg(to_ratatui_color(callout_style.border_color));
+            for i in 0..visible_height {
+                let border_line = Span::styled("│", border_style);
+                let border_area = ratatui::layout::Rect {
+                    x: node.rect.x,
+                    y: visible_start_y + i,
+                    width: 1,
+                    height: 1,
+                };
+                frame.render_widget(Paragraph::new(RatatuiText::from(border_line)), border_area);
+            }
 
             // Render icon at the top left (only if the top of the callout is visible)
             if node.rect.y >= scroll_y {
