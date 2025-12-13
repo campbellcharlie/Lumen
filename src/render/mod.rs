@@ -20,7 +20,7 @@ pub fn init_terminal() -> io::Result<Terminal> {
     crossterm::execute!(
         stdout,
         crossterm::terminal::EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture,
+        // Don't capture mouse - allow terminal text selection
         crossterm::cursor::Hide
     )?;
     let backend = CrosstermBackend::new(stdout);
@@ -33,7 +33,6 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
     crossterm::execute!(
         terminal.backend_mut(),
         crossterm::terminal::LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture,
         crossterm::cursor::Show
     )?;
     Ok(())
