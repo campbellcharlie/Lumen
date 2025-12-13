@@ -15,11 +15,14 @@
 //! - `ir`: Intermediate representation types (Document, Block, Inline)
 //! - `parser`: Markdown → IR conversion
 //! - `theme`: CSS-like theming system
+//! - `layout`: Layout engine (positions + sizes)
 
 pub mod ir;
 pub mod parser;
 pub mod theme;
+pub mod layout;
 
 pub use ir::Document;
 pub use parser::parse_markdown;
 pub use theme::Theme;
+pub use layout::{layout_document, LayoutTree};
