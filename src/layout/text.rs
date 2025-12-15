@@ -1,11 +1,11 @@
 //! Inline text layout and wrapping
 
-use super::types::{Line, TextStyle};
+use super::types::{ImageReference, Line, TextStyle};
 use crate::ir::Inline;
 use crate::theme::{FontStyle, FontWeight, Theme};
 
 /// Layout inline elements into wrapped lines
-pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme) -> Vec<Line> {
+pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme, y_offset: u16, images: &mut Vec<ImageReference>) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut current_line = Line::new();
     let mut current_width = 0u16;
@@ -20,6 +20,8 @@ pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme) -> Vec<Lin
             TextStyle::default(),
             None,
             theme,
+            y_offset,
+            images,
         );
     }
 
@@ -45,6 +47,8 @@ fn layout_inline(
     base_style: TextStyle,
     link_url: Option<String>,
     theme: &Theme,
+    y_offset: u16,
+    images: &mut Vec<ImageReference>,
 ) {
     match inline {
         Inline::Text(text) => {
@@ -73,6 +77,8 @@ fn layout_inline(
                     style,
                     link_url.clone(),
                     theme,
+                    y_offset,
+                    images,
                 );
             }
         }
@@ -91,6 +97,8 @@ fn layout_inline(
                     style,
                     link_url.clone(),
                     theme,
+                    y_offset,
+                    images,
                 );
             }
         }
@@ -106,6 +114,8 @@ fn layout_inline(
                     base_style,
                     link_url.clone(),
                     theme,
+                    y_offset,
+                    images,
                 );
             }
         }
@@ -141,6 +151,8 @@ fn layout_inline(
                     style,
                     Some(url.clone()),
                     theme,
+                    y_offset,
+                    images,
                 );
             }
 
@@ -165,16 +177,25 @@ fn layout_inline(
             }
         }
         Inline::Image { url, alt, .. } => {
-            // For iTerm2 inline images, we pass the image info
-            // The renderer will attempt to load and display the image
-            // If it fails, it will fall back to the text
+            // Render placeholder text inline
             let image_text = format!("[IMAGE: {}]", alt);
             let style = TextStyle {
                 foreground: Some(theme.colors.muted),
                 ..base_style
             };
 
-            // Add segment with image metadata
+            // Calculate which line this image appears on (within this text block)
+            let line_number = lines.len() as u16;  // Current line being built
+
+            // Collect image reference for sidebar rendering
+            // y_position is now absolute (y_offset + line_number)
+            images.push(ImageReference {
+                path: url.clone(),
+                alt_text: alt.clone(),
+                y_position: y_offset + line_number,  // Absolute position
+            });
+
+            // Add placeholder text segment
             current_line.add_segment_full(
                 image_text,
                 style,
@@ -272,8 +293,9 @@ mod tests {
     fn test_simple_text_layout() {
         let theme = theme::docs_theme();
         let inlines = vec![Inline::Text("Hello World".to_string())];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 80, &theme);
+        let lines = layout_text(&inlines, 80, &theme, 0, &mut images);
         assert_eq!(lines.len(), 1);
         // "Hello" + " " + "World" = 3 segments
         assert_eq!(lines[0].segments.len(), 3);
@@ -285,8 +307,9 @@ mod tests {
         let inlines = vec![Inline::Text(
             "This is a long line that should wrap".to_string(),
         )];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 20, &theme);
+        let lines = layout_text(&inlines, 20, &theme, 0, &mut images);
         assert!(lines.len() > 1, "Text should wrap into multiple lines");
     }
 
@@ -294,8 +317,9 @@ mod tests {
     fn test_long_word_breaking() {
         let theme = theme::docs_theme();
         let inlines = vec![Inline::Text("Supercalifragilisticexpialidocious".to_string())];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 10, &theme);
+        let lines = layout_text(&inlines, 10, &theme, 0, &mut images);
         assert!(lines.len() > 1, "Long word should break across lines");
     }
 
@@ -303,8 +327,9 @@ mod tests {
     fn test_strong_emphasis() {
         let theme = theme::docs_theme();
         let inlines = vec![Inline::Strong(vec![Inline::Text("Bold".to_string())])];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 80, &theme);
+        let lines = layout_text(&inlines, 80, &theme, 0, &mut images);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].segments[0].style.weight, FontWeight::Bold);
     }
@@ -317,8 +342,9 @@ mod tests {
             Inline::LineBreak,
             Inline::Text("Line 2".to_string()),
         ];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 80, &theme);
+        let lines = layout_text(&inlines, 80, &theme, 0, &mut images);
         assert_eq!(lines.len(), 2);
     }
 
@@ -326,8 +352,9 @@ mod tests {
     fn test_empty_content() {
         let theme = theme::docs_theme();
         let inlines = vec![];
+        let mut images = Vec::new();
 
-        let lines = layout_text(&inlines, 80, &theme);
+        let lines = layout_text(&inlines, 80, &theme, 0, &mut images);
         assert_eq!(lines.len(), 1); // At least one empty line
     }
 }

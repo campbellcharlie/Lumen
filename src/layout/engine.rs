@@ -9,6 +9,7 @@ use crate::theme::Theme;
 pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -> LayoutTree {
     let mut node_counter = 0;
     let mut hit_regions = Vec::new();
+    let mut images = Vec::new();
 
     let root = layout_blocks(
         &document.blocks,
@@ -18,6 +19,7 @@ pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -
         theme,
         &mut node_counter,
         &mut hit_regions,
+        &mut images,
     );
 
     // Calculate actual document height as the maximum (y + height) of all children
@@ -38,6 +40,7 @@ pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -
         root: document_node,
         viewport,
         hit_regions,
+        images,
     }
 }
 
@@ -49,6 +52,7 @@ fn layout_blocks(
     theme: &Theme,
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> Vec<LayoutNode> {
     let mut nodes = Vec::new();
 
@@ -57,7 +61,7 @@ fn layout_blocks(
         let margin_top = block_margin_top(block, theme);
         y += margin_top;
 
-        let node = layout_block(block, x, y, width, theme, node_counter, hit_regions);
+        let node = layout_block(block, x, y, width, theme, node_counter, hit_regions, images);
         y += node.rect.height;
 
         // Add bottom margin
@@ -78,32 +82,33 @@ fn layout_block(
     theme: &Theme,
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
     *node_counter += 1;
     let id = *node_counter;
 
     match block {
         Block::Heading { level, content } => {
-            layout_heading(*level, content, x, y, width, theme, id, hit_regions)
+            layout_heading(*level, content, x, y, width, theme, id, hit_regions, images)
         }
         Block::Paragraph { content } => {
-            layout_paragraph(content, x, y, width, theme, id)
+            layout_paragraph(content, x, y, width, theme, id, images)
         }
         Block::CodeBlock { lang, code } => {
-            layout_code_block(lang.as_deref(), code, x, y, width, theme, id, hit_regions)
+            layout_code_block(lang.as_deref(), code, x, y, width, theme, id, hit_regions, images)
         }
         Block::BlockQuote { blocks } => {
-            layout_blockquote(blocks, x, y, width, theme, id, node_counter, hit_regions)
+            layout_blockquote(blocks, x, y, width, theme, id, node_counter, hit_regions, images)
         }
         Block::List { ordered, start, items } => {
-            layout_list(*ordered, *start, items, x, y, width, theme, id, node_counter, hit_regions)
+            layout_list(*ordered, *start, items, x, y, width, theme, id, node_counter, hit_regions, images)
         }
         Block::Table { headers, rows, alignment } => {
-            layout_table(headers, rows, alignment, x, y, width, theme, id, node_counter)
+            layout_table(headers, rows, alignment, x, y, width, theme, id, node_counter, images)
         }
         Block::HorizontalRule => layout_horizontal_rule(x, y, width, theme, id),
         Block::Callout { kind, content, .. } => {
-            layout_callout(*kind, content, x, y, width, theme, id, node_counter, hit_regions)
+            layout_callout(*kind, content, x, y, width, theme, id, node_counter, hit_regions, images)
         }
     }
 }
@@ -117,8 +122,9 @@ fn layout_heading(
     theme: &Theme,
     id: NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
-    let lines = layout_text(content, width, theme);
+    let lines = layout_text(content, width, theme, y, images);
     let text = content.iter().map(|i| i.to_plain_text()).collect::<String>();
     let height = lines.len() as u16;
 
@@ -148,8 +154,9 @@ fn layout_paragraph(
     width: u16,
     theme: &Theme,
     id: NodeId,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
-    let lines = layout_text(content, width, theme);
+    let lines = layout_text(content, width, theme, y, images);
     let height = lines.len() as u16;
 
     LayoutNode {
@@ -170,6 +177,7 @@ fn layout_code_block(
     theme: &Theme,
     id: NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    _images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
     let padding = theme.spacing.code_block_padding;
     let _content_width = width.saturating_sub(padding * 2);
@@ -206,6 +214,7 @@ fn layout_blockquote(
     id: NodeId,
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
     let indent = theme.spacing.blockquote_indent;
     let content_width = width.saturating_sub(indent);
@@ -218,6 +227,7 @@ fn layout_blockquote(
         theme,
         node_counter,
         hit_regions,
+        images,
     );
 
     let height = children.iter().map(|n| n.rect.height).sum::<u16>();
@@ -241,6 +251,7 @@ fn layout_callout(
     id: NodeId,
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
     // Callouts have a 2-character indent for the icon/border
     let indent = 2u16;
@@ -254,6 +265,7 @@ fn layout_callout(
         theme,
         node_counter,
         hit_regions,
+        images,
     );
 
     let height = children.iter().map(|n| n.rect.height).sum::<u16>().max(1);
@@ -278,8 +290,8 @@ fn layout_list(
     id: NodeId,
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
-    let indent = theme.spacing.list_indent;
     let mut children = Vec::new();
     let mut current_y = y;
 
@@ -288,25 +300,37 @@ fn layout_list(
         let item_id = *node_counter;
 
         let marker = if ordered {
-            format!("{}. ", start + i)
+            format!("{}.", start + i)
         } else {
-            "• ".to_string()
+            "•".to_string()
         };
 
-        let _marker_width = marker.len() as u16;
-        let content_width = width.saturating_sub(indent);
+        let marker_width = marker.len() as u16;
+        // Add minimal 1-space gap between marker and content
+        let content_start = x + marker_width + 1;
+        let content_width = width.saturating_sub(marker_width + 1);
 
         let item_children = layout_blocks(
             &item.content,
-            x + indent,
+            content_start,
             current_y,
             content_width,
             theme,
             node_counter,
             hit_regions,
+            images,
         );
 
-        let item_height = item_children.iter().map(|n| n.rect.height).sum::<u16>().max(1);
+        // Calculate actual height by finding the Y span of children
+        // (not just sum of heights, because layout_blocks adds margins between children)
+        let item_height = if item_children.is_empty() {
+            1
+        } else {
+            let first_y = item_children.first().unwrap().rect.y;
+            let last_child = item_children.last().unwrap();
+            let last_y = last_child.rect.y + last_child.rect.height;
+            last_y - first_y
+        };
 
         let item_node = LayoutNode {
             id: item_id,
@@ -344,9 +368,9 @@ fn layout_table(
     theme: &Theme,
     id: NodeId,
     node_counter: &mut NodeId,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
-    let num_columns = headers.len().max(rows.first().map(|r| r.len()).unwrap_or(0));
-    let column_widths = compute_column_widths(num_columns, width);
+    let column_widths = compute_column_widths(headers, rows, theme, width);
 
     let mut children = Vec::new();
     let mut current_y = y;
@@ -364,6 +388,7 @@ fn layout_table(
             *node_counter,
             node_counter,
             true,
+            images,
         );
         current_y += row_node.rect.height;
         children.push(row_node);
@@ -382,6 +407,7 @@ fn layout_table(
             *node_counter,
             node_counter,
             false,
+            images,
         );
         current_y += row_node.rect.height;
         children.push(row_node);
@@ -389,10 +415,13 @@ fn layout_table(
 
     let total_height = current_y - y;
 
+    // Calculate actual table width from column widths
+    let actual_width: u16 = column_widths.iter().sum();
+
     LayoutNode {
         id,
-        rect: Rectangle::new(x, y, width, total_height),
-        element: LayoutElement::Table { column_widths },
+        rect: Rectangle::new(x, y, actual_width, total_height),
+        element: LayoutElement::Table { column_widths: column_widths.clone() },
         children,
         style: ComputedStyle::default(),
     }
@@ -403,11 +432,12 @@ fn layout_table_row(
     column_widths: &[u16],
     x: u16,
     y: u16,
-    width: u16,
+    _width: u16,
     theme: &Theme,
     id: NodeId,
     node_counter: &mut NodeId,
     is_header: bool,
+    images: &mut Vec<ImageReference>,
 ) -> LayoutNode {
     let mut children = Vec::new();
     let mut current_x = x;
@@ -419,15 +449,27 @@ fn layout_table_row(
         let content_width = cell_width.saturating_sub(padding * 2);
 
         *node_counter += 1;
-        let lines = layout_text(&cell.content, content_width, theme);
+        let cell_id = *node_counter;
+
+        let lines = layout_text(&cell.content, content_width, theme, y, images);
         let cell_height = lines.len() as u16 + padding * 2;
         max_height = max_height.max(cell_height);
 
-        let cell_node = LayoutNode {
+        // Create a paragraph node to hold the cell content
+        *node_counter += 1;
+        let content_node = LayoutNode {
             id: *node_counter,
+            rect: Rectangle::new(current_x + padding, y + padding, content_width, lines.len() as u16),
+            element: LayoutElement::Paragraph { lines },
+            children: Vec::new(),
+            style: ComputedStyle::default(),
+        };
+
+        let cell_node = LayoutNode {
+            id: cell_id,
             rect: Rectangle::new(current_x, y, cell_width, cell_height),
             element: LayoutElement::TableCell,
-            children: Vec::new(),
+            children: vec![content_node],
             style: ComputedStyle::default(),
         };
 
@@ -435,22 +477,88 @@ fn layout_table_row(
         children.push(cell_node);
     }
 
+    // Calculate actual row width from column widths
+    let actual_width: u16 = column_widths.iter().sum();
+
     LayoutNode {
         id,
-        rect: Rectangle::new(x, y, width, max_height),
+        rect: Rectangle::new(x, y, actual_width, max_height),
         element: LayoutElement::TableRow { is_header },
         children,
         style: ComputedStyle::default(),
     }
 }
 
-fn compute_column_widths(num_columns: usize, total_width: u16) -> Vec<u16> {
+fn inline_text_length(inline: &crate::ir::Inline) -> usize {
+    match inline {
+        crate::ir::Inline::Text(s) | crate::ir::Inline::Code(s) => s.len(),
+        crate::ir::Inline::Strong(inlines)
+        | crate::ir::Inline::Emphasis(inlines)
+        | crate::ir::Inline::Strikethrough(inlines) => {
+            inlines.iter().map(inline_text_length).sum()
+        }
+        crate::ir::Inline::Link { text, .. } => {
+            text.iter().map(inline_text_length).sum()
+        }
+        crate::ir::Inline::SoftBreak | crate::ir::Inline::LineBreak => 0,
+        crate::ir::Inline::Image { .. } => 8, // Placeholder width for images
+    }
+}
+
+fn compute_column_widths(
+    headers: &[crate::ir::TableCell],
+    rows: &[Vec<crate::ir::TableCell>],
+    theme: &Theme,
+    max_width: u16,
+) -> Vec<u16> {
+    let num_columns = headers.len().max(rows.first().map(|r| r.len()).unwrap_or(0));
     if num_columns == 0 {
         return Vec::new();
     }
 
-    let width_per_column = total_width / num_columns as u16;
-    vec![width_per_column; num_columns]
+    let padding = theme.blocks.table.padding;
+    let mut column_widths = vec![0u16; num_columns];
+
+    // Check header cells
+    for (i, cell) in headers.iter().enumerate() {
+        if i >= num_columns {
+            break;
+        }
+        // Get the total text width in this cell's content
+        let content_width = cell.content.iter()
+            .map(inline_text_length)
+            .sum::<usize>() as u16;
+        column_widths[i] = column_widths[i].max(content_width + padding * 2);
+    }
+
+    // Check all data rows
+    for row in rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i >= num_columns {
+                break;
+            }
+            let content_width = cell.content.iter()
+                .map(inline_text_length)
+                .sum::<usize>() as u16;
+            column_widths[i] = column_widths[i].max(content_width + padding * 2);
+        }
+    }
+
+    // Ensure minimum width of 3 per column (for borders and at least 1 char)
+    for width in &mut column_widths {
+        *width = (*width).max(3);
+    }
+
+    // If total exceeds max_width, scale down proportionally
+    let total_width: u16 = column_widths.iter().sum();
+    if total_width > max_width {
+        let scale = max_width as f64 / total_width as f64;
+        for width in &mut column_widths {
+            *width = ((*width as f64 * scale) as u16).max(3);
+        }
+    }
+
+    column_widths
 }
 
 fn layout_horizontal_rule(x: u16, y: u16, width: u16, _theme: &Theme, id: NodeId) -> LayoutNode {

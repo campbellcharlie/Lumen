@@ -1,14 +1,17 @@
 //! Terminal rendering
 
-use crate::layout::{LayoutElement, LayoutNode, LayoutTree, TextSegment, Line};
-use crate::theme::{Color, FontStyle, FontWeight, Theme};
+use crate::layout::{LayoutElement, LayoutNode, LayoutTree, TextSegment, Line, ImageReference};
+use crate::theme::{BorderStyle, Color, FontStyle, FontWeight, Theme};
+use crate::search::SearchState;
 use ratatui::{
     backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
     style::{Color as RatatuiColor, Modifier, Style},
     text::{Span, Text as RatatuiText},
     widgets::{Block, Borders, Paragraph},
     Terminal as RatatuiTerminal,
 };
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 use std::io;
 use std::fs;
 use std::path::Path;
@@ -22,7 +25,6 @@ pub fn init_terminal() -> io::Result<Terminal> {
     crossterm::execute!(
         stdout,
         crossterm::terminal::EnterAlternateScreen,
-        // Don't capture mouse - allow terminal text selection
         crossterm::cursor::Hide
     )?;
     let backend = CrosstermBackend::new(stdout);
@@ -35,25 +37,45 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
     crossterm::execute!(
         terminal.backend_mut(),
         crossterm::terminal::LeaveAlternateScreen,
+        crossterm::event::DisableMouseCapture,
         crossterm::cursor::Show
     )?;
     Ok(())
 }
 
 /// Render layout tree to terminal
-pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme, show_help: bool) -> io::Result<()> {
+pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme, show_help: bool, search_state: &SearchState) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
+
+        // Split screen if images are present
+        let (content_area, sidebar_area) = if !tree.images.is_empty() {
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(70),  // Main content
+                    Constraint::Percentage(30),  // Image sidebar
+                ])
+                .split(area);
+            (chunks[0], Some(chunks[1]))
+        } else {
+            (area, None)
+        };
 
         // Render document starting from scroll position
         let scroll_y = tree.viewport.scroll_y;
 
         for node in &tree.root.children {
-            render_node(frame, node, theme, scroll_y, area);
+            render_node(frame, node, theme, scroll_y, content_area, search_state);
         }
 
-        // Render status bar
-        render_status_bar(frame, tree, area);
+        // Render images in sidebar if present
+        if let Some(sidebar) = sidebar_area {
+            render_image_sidebar(frame, &tree.images, scroll_y, sidebar, theme);
+        }
+
+        // Render status bar (use full area width)
+        render_status_bar(frame, tree, area, search_state);
 
         // Render help menu if active
         if show_help {
@@ -69,6 +91,7 @@ fn render_node(
     theme: &Theme,
     scroll_y: u16,
     area: ratatui::layout::Rect,
+    search_state: &SearchState,
 ) {
     // Calculate display position
     let display_y = node.rect.y.saturating_sub(scroll_y);
@@ -78,6 +101,7 @@ fn render_node(
         node.element,
         LayoutElement::Callout { .. }
             | LayoutElement::BlockQuote
+            | LayoutElement::CodeBlock { .. }
             | LayoutElement::List { .. }
             | LayoutElement::ListItem { .. }
             | LayoutElement::Table { .. }
@@ -102,40 +126,36 @@ fn render_node(
             render_heading(frame, node, *level, text, theme, display_y, area);
         }
         LayoutElement::Paragraph { lines } => {
-            render_paragraph(frame, lines, theme, node.rect.x, display_y, area);
+            render_paragraph(frame, lines, theme, node.rect.x, display_y, area, node.rect.y, scroll_y, search_state);
         }
         LayoutElement::CodeBlock { lang, lines } => {
-            render_code_block(frame, lang, lines, theme, node.rect.x, display_y, node.rect.width, area);
+            render_code_block(frame, lang, lines, theme, node.rect.x, display_y, node.rect.width, area, node.rect.y, scroll_y);
         }
         LayoutElement::List { .. } => {
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
         LayoutElement::ListItem { marker, .. } => {
-            // Render marker - only style the marker character, not trailing space
-            let marker_char = marker.trim_end();
+            // Render marker with style
             let marker_style = Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
 
-            // Create spans: styled marker + unstyled space
-            let spans = vec![
-                Span::styled(marker_char.to_string(), marker_style),
-                Span::raw(" "),
-            ];
-            let marker_text = RatatuiText::from(ratatui::text::Line::from(spans));
-
+            // Render the marker as-is (includes trailing space)
             let marker_area = ratatui::layout::Rect {
                 x: node.rect.x,
                 y: display_y,
-                width: marker.chars().count() as u16,
+                width: marker.len() as u16,
                 height: 1,
             };
 
-            frame.render_widget(Paragraph::new(marker_text), marker_area);
+            frame.render_widget(
+                Paragraph::new(RatatuiText::from(Span::styled(marker.as_str(), marker_style))),
+                marker_area
+            );
 
-            // Render children
+            // Render children - they are positioned by the layout
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
         LayoutElement::BlockQuote => {
@@ -156,7 +176,7 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
         LayoutElement::Callout { kind } => {
@@ -233,33 +253,198 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
         LayoutElement::Table { .. } => {
-            for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+            let border_chars = get_border_chars(theme.blocks.table.border_style);
+            let border_color = theme.colors.foreground;
+            let border_style = Style::default().fg(to_ratatui_color(border_color));
+
+            // Get column positions from first row
+            let column_positions: Vec<u16> = if let Some(first_row) = node.children.first() {
+                if let LayoutElement::TableRow { .. } = first_row.element {
+                    first_row.children.iter().map(|cell| cell.rect.x).collect()
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![]
+            };
+
+            let table_right = node.rect.x + node.rect.width - 1;
+
+            // Draw top border
+            if display_y < area.height {
+                // Build top border line segment by segment
+                let mut top_line = String::new();
+
+                // Start with top-left corner
+                top_line.push_str(border_chars.top_left);
+
+                // For each column, add horizontal line and then junction/corner
+                for window in column_positions.windows(2) {
+                    let segment_width = (window[1] - window[0] - 1) as usize;
+                    top_line.push_str(&border_chars.horizontal.repeat(segment_width));
+                    top_line.push_str(border_chars.t_down);
+                }
+
+                // Add final segment to right edge
+                if let Some(&last_col) = column_positions.last() {
+                    let final_width = (table_right - last_col) as usize;
+                    top_line.push_str(&border_chars.horizontal.repeat(final_width));
+                }
+
+                // End with top-right corner
+                top_line.push_str(border_chars.top_right);
+
+                let top_area = ratatui::layout::Rect {
+                    x: node.rect.x,
+                    y: display_y,
+                    width: node.rect.width,
+                    height: 1,
+                };
+                frame.render_widget(
+                    Paragraph::new(RatatuiText::from(Span::styled(top_line, border_style))),
+                    top_area
+                );
+            }
+
+            // Render table rows
+            for (i, child) in node.children.iter().enumerate() {
+                render_node(frame, child, theme, scroll_y, area, search_state);
+
+                // Draw row separator or bottom border
+                let row_bottom_y = child.rect.y + child.rect.height;
+                let is_last_row = i == node.children.len() - 1;
+                let draw_separator = is_last_row || theme.blocks.table.row_separator;
+
+                if draw_separator && row_bottom_y >= scroll_y && row_bottom_y < scroll_y + area.height {
+                    let sep_display_y = row_bottom_y - scroll_y;
+
+                    if sep_display_y < area.height {
+                        // Build separator line segment by segment
+                        let mut sep_line = String::new();
+
+                        if is_last_row {
+                            // Bottom border
+                            sep_line.push_str(border_chars.bottom_left);
+
+                            for window in column_positions.windows(2) {
+                                let segment_width = (window[1] - window[0] - 1) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
+                                sep_line.push_str(border_chars.t_up);
+                            }
+
+                            if let Some(&last_col) = column_positions.last() {
+                                let final_width = (table_right - last_col) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(final_width));
+                            }
+
+                            sep_line.push_str(border_chars.bottom_right);
+                        } else {
+                            // Middle row separator
+                            sep_line.push_str(border_chars.t_right);
+
+                            for window in column_positions.windows(2) {
+                                let segment_width = (window[1] - window[0] - 1) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
+                                sep_line.push_str(border_chars.cross);
+                            }
+
+                            if let Some(&last_col) = column_positions.last() {
+                                let final_width = (table_right - last_col) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(final_width));
+                            }
+
+                            sep_line.push_str(border_chars.t_left);
+                        }
+
+                        let sep_area = ratatui::layout::Rect {
+                            x: node.rect.x,
+                            y: sep_display_y,
+                            width: node.rect.width,
+                            height: 1,
+                        };
+                        frame.render_widget(
+                            Paragraph::new(RatatuiText::from(Span::styled(sep_line, border_style))),
+                            sep_area
+                        );
+                    }
+                }
             }
         }
         LayoutElement::TableRow { is_header: _ } => {
+            let border_chars = get_border_chars(theme.blocks.table.border_style);
+            let border_color = theme.colors.foreground;
+            let border_style = Style::default().fg(to_ratatui_color(border_color));
+
+            // Render cell content first
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
+            }
+
+            // Collect column X positions
+            let column_positions: Vec<u16> = node.children.iter().map(|cell| cell.rect.x).collect();
+            let table_right = if let Some(last_cell) = node.children.last() {
+                last_cell.rect.x + last_cell.rect.width - 1
+            } else {
+                node.rect.x + node.rect.width - 1
+            };
+
+            // Draw vertical borders for the entire row
+            let row_top_y = node.rect.y.max(scroll_y);
+            let row_bottom_y = (node.rect.y + node.rect.height).min(scroll_y + area.height);
+
+            for y in row_top_y..row_bottom_y {
+                if y >= scroll_y && y < scroll_y + area.height {
+                    let border_display_y = y - scroll_y;
+
+                    // Draw vertical border at each column position
+                    for &col_x in &column_positions {
+                        let border_area = ratatui::layout::Rect {
+                            x: col_x,
+                            y: border_display_y,
+                            width: 1,
+                            height: 1,
+                        };
+                        frame.render_widget(
+                            Paragraph::new(RatatuiText::from(Span::styled(border_chars.vertical, border_style))),
+                            border_area
+                        );
+                    }
+
+                    // Draw right border of table
+                    let right_border_area = ratatui::layout::Rect {
+                        x: table_right,
+                        y: border_display_y,
+                        width: 1,
+                        height: 1,
+                    };
+                    frame.render_widget(
+                        Paragraph::new(RatatuiText::from(Span::styled(border_chars.vertical, border_style))),
+                        right_border_area
+                    );
+                }
             }
         }
         LayoutElement::TableCell => {
-            // Simple cell rendering - could be improved
+            // Just render cell content - borders handled by TableRow
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
         LayoutElement::HorizontalRule => {
-            let hr = "─".repeat(node.rect.width as usize);
+            // Use the content area width, not the full layout width
+            // (important when sidebar is present)
+            let hr_width = area.width.saturating_sub(node.rect.x);
+            let hr = "─".repeat(hr_width as usize);
             let hr_text = RatatuiText::from(hr);
 
             let hr_area = ratatui::layout::Rect {
                 x: node.rect.x,
                 y: display_y,
-                width: node.rect.width,
+                width: hr_width,
                 height: 1,
             };
 
@@ -268,7 +453,7 @@ fn render_node(
         _ => {
             // Render children for other types
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area);
+                render_node(frame, child, theme, scroll_y, area, search_state);
             }
         }
     }
@@ -323,6 +508,9 @@ fn render_paragraph(
     x: u16,
     display_y: u16,
     area: ratatui::layout::Rect,
+    node_y: u16,
+    _scroll_y: u16,
+    search_state: &SearchState,
 ) {
     for (i, line) in lines.iter().enumerate() {
         let y = display_y + i as u16;
@@ -330,9 +518,78 @@ fn render_paragraph(
             break;
         }
 
-        let spans: Vec<Span> = line.segments.iter().map(|seg| {
-            text_segment_to_span(seg, theme)
-        }).collect();
+        let line_y_in_doc = node_y + i as u16;
+        let mut spans: Vec<Span> = Vec::new();
+
+        // IMPORTANT: Start with an explicit style reset to prevent bleed from previous widgets
+        // This is critical when paragraphs are rendered after styled elements on the same line
+        if x > 0 {
+            // Only add reset if we're not at the start of the line
+            // This prevents style bleed from list markers and other inline elements
+            spans.push(Span::styled("", Style::reset()));
+        }
+
+        // Get search matches for this line
+        let line_matches: Vec<&crate::search::SearchMatch> = search_state.matches
+            .iter()
+            .filter(|m| m.y == line_y_in_doc)
+            .collect();
+
+        // If no matches on this line, render normally
+        if line_matches.is_empty() {
+            spans.extend(line.segments.iter().map(|seg| {
+                text_segment_to_span(seg, theme)
+            }));
+        } else {
+            // Render with highlighting
+            let mut current_x = x;
+            for seg in &line.segments {
+                let seg_end = current_x + seg.text.len() as u16;
+                let mut last_pos = 0;
+
+                for match_ref in &line_matches {
+                    let match_start = match_ref.x;
+                    let match_end = match_ref.x + match_ref.length as u16;
+
+                    // Check if this match overlaps with this segment
+                    if match_start < seg_end && match_end > current_x {
+                        let overlap_start = match_start.saturating_sub(current_x) as usize;
+                        let overlap_end = (match_end.saturating_sub(current_x) as usize).min(seg.text.len());
+
+                        // Add text before the match
+                        if overlap_start > last_pos {
+                            let before_text = &seg.text[last_pos..overlap_start];
+                            spans.push(Span::styled(before_text.to_string(), segment_to_style(seg, theme)));
+                        }
+
+                        // Add highlighted match
+                        if overlap_end > overlap_start {
+                            let match_text = &seg.text[overlap_start..overlap_end];
+                            let is_current = search_state.current_index
+                                .map(|idx| search_state.matches[idx] == **match_ref)
+                                .unwrap_or(false);
+
+                            let highlight_style = if is_current {
+                                Style::default().bg(RatatuiColor::Yellow).fg(RatatuiColor::Black).add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().bg(RatatuiColor::DarkGray).fg(RatatuiColor::White)
+                            };
+
+                            spans.push(Span::styled(match_text.to_string(), highlight_style));
+                            last_pos = overlap_end;
+                        }
+                    }
+                }
+
+                // Add remaining text after all matches
+                if last_pos < seg.text.len() {
+                    let after_text = &seg.text[last_pos..];
+                    spans.push(Span::styled(after_text.to_string(), segment_to_style(seg, theme)));
+                }
+
+                current_x = seg_end;
+            }
+        }
 
         let line_text = RatatuiText::from(ratatui::text::Line::from(spans));
         let para = Paragraph::new(line_text);
@@ -348,6 +605,28 @@ fn render_paragraph(
     }
 }
 
+/// Convert a text segment to a style (without the text)
+fn segment_to_style(seg: &TextSegment, theme: &Theme) -> Style {
+    let base = Style::default()
+        .fg(seg.style.foreground.map(to_ratatui_color).unwrap_or(to_ratatui_color(theme.colors.foreground)));
+
+    let base = if let Some(bg) = seg.style.background {
+        base.bg(to_ratatui_color(bg))
+    } else {
+        base
+    };
+
+    let base = match seg.style.weight {
+        FontWeight::Bold => base.add_modifier(Modifier::BOLD),
+        FontWeight::Normal => base,
+    };
+
+    match seg.style.style {
+        FontStyle::Italic => base.add_modifier(Modifier::ITALIC),
+        FontStyle::Normal => base,
+    }
+}
+
 fn render_code_block(
     frame: &mut ratatui::Frame,
     lang: &Option<String>,
@@ -357,53 +636,64 @@ fn render_code_block(
     display_y: u16,
     width: u16,
     area: ratatui::layout::Rect,
+    node_y: u16,
+    scroll_y: u16,
 ) {
     let code_style = &theme.blocks.code_block;
     let style = Style::default()
         .fg(to_ratatui_color(code_style.foreground))
         .bg(to_ratatui_color(code_style.background));
 
-    let block_height = (lines.len() as u16 + 2).min(area.height.saturating_sub(display_y));
-
-    // Manually draw box border to avoid Ratatui's dashed line artifacts
     let border_fg = to_ratatui_color(code_style.foreground);
     let border_style = Style::default().fg(border_fg).bg(to_ratatui_color(code_style.background));
 
-    // Top border: ┌───...───┐
-    let top_border = format!("┌{}┐", "─".repeat(width.saturating_sub(2) as usize));
-    let top_span = Span::styled(top_border, border_style);
-    frame.render_widget(
-        Paragraph::new(RatatuiText::from(top_span)),
-        ratatui::layout::Rect { x, y: display_y, width, height: 1 }
-    );
+    // Calculate block boundaries in document coordinates
+    let block_start = node_y;
+    let block_end = node_y + lines.len() as u16 + 2; // +2 for top and bottom borders
 
-    // Left and right borders for each content line
-    for i in 1..block_height.saturating_sub(1) {
-        // Left border
+    // Draw top border if visible
+    if block_start >= scroll_y && block_start < scroll_y + area.height {
+        let top_y = block_start - scroll_y;
+        let top_border = format!("┌{}┐", "─".repeat(width.saturating_sub(2) as usize));
         frame.render_widget(
-            Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
-            ratatui::layout::Rect { x, y: display_y + i, width: 1, height: 1 }
-        );
-        // Right border
-        frame.render_widget(
-            Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
-            ratatui::layout::Rect { x: x + width - 1, y: display_y + i, width: 1, height: 1 }
+            Paragraph::new(RatatuiText::from(Span::styled(top_border, border_style))),
+            ratatui::layout::Rect { x, y: top_y, width, height: 1 }
         );
     }
 
-    // Bottom border: └───...───┘
-    if block_height > 1 {
+    // Draw side borders for visible content lines
+    let content_start = block_start + 1;
+    let content_end = block_end - 1;
+    for doc_y in content_start..content_end {
+        if doc_y >= scroll_y && doc_y < scroll_y + area.height {
+            let display_line_y = doc_y - scroll_y;
+            // Left border
+            frame.render_widget(
+                Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
+                ratatui::layout::Rect { x, y: display_line_y, width: 1, height: 1 }
+            );
+            // Right border
+            frame.render_widget(
+                Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
+                ratatui::layout::Rect { x: x + width - 1, y: display_line_y, width: 1, height: 1 }
+            );
+        }
+    }
+
+    // Draw bottom border if visible
+    let bottom_y = block_end - 1;
+    if bottom_y >= scroll_y && bottom_y < scroll_y + area.height {
+        let display_bottom_y = bottom_y - scroll_y;
         let bottom_border = format!("└{}┘", "─".repeat(width.saturating_sub(2) as usize));
-        let bottom_span = Span::styled(bottom_border, border_style);
         frame.render_widget(
-            Paragraph::new(RatatuiText::from(bottom_span)),
-            ratatui::layout::Rect { x, y: display_y + block_height - 1, width, height: 1 }
+            Paragraph::new(RatatuiText::from(Span::styled(bottom_border, border_style))),
+            ratatui::layout::Rect { x, y: display_bottom_y, width, height: 1 }
         );
     }
 
-    // Render language badge if present
+    // Render language badge if present (only if top border is visible)
     if let Some(lang_name) = lang {
-        if code_style.show_language_badge {
+        if code_style.show_language_badge && node_y >= scroll_y && display_y < area.height {
             let badge = format!(" {} ", lang_name);
             let badge_span = Span::styled(
                 badge,
@@ -422,20 +712,44 @@ fn render_code_block(
         }
     }
 
+    // Calculate which lines are visible
+    // Code block content starts at node_y + 1 (after top border)
+    let content_start_y = node_y + 1;
+
+    // Determine starting line index based on scroll position
+    let start_line = if content_start_y < scroll_y {
+        (scroll_y - content_start_y) as usize
+    } else {
+        0
+    };
+
     // Render code lines
-    for (i, line) in lines.iter().enumerate() {
-        let y = display_y + i as u16 + 1;
-        if y >= area.height {
+    for i in start_line..lines.len() {
+        let line_y_in_doc = content_start_y + i as u16;
+
+        // Skip if line is above viewport
+        if line_y_in_doc < scroll_y {
+            continue;
+        }
+
+        // Stop if line is below viewport
+        if line_y_in_doc >= scroll_y + area.height {
             break;
         }
 
-        let span = Span::styled(line.clone(), style);
+        let display_line_y = line_y_in_doc - scroll_y;
+
+        // Pad line with spaces to fill the full width so background extends across
+        let content_width = width.saturating_sub(2) as usize;
+        let padded_line = format!("{:width$}", &lines[i], width = content_width);
+
+        let span = Span::styled(padded_line, style);
         let line_text = RatatuiText::from(span);
         let para = Paragraph::new(line_text);
 
         let line_area = ratatui::layout::Rect {
             x: x + 1,
-            y,
+            y: display_line_y,
             width: width.saturating_sub(2),
             height: 1,
         };
@@ -448,7 +762,44 @@ fn render_status_bar(
     frame: &mut ratatui::Frame,
     tree: &LayoutTree,
     area: ratatui::layout::Rect,
+    search_state: &SearchState,
 ) {
+    // If search is active, show search bar instead
+    if search_state.active {
+        let search_text = if search_state.needle.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{}", search_state.needle)
+        };
+
+        let match_info = if search_state.matches.is_empty() && !search_state.needle.is_empty() {
+            " (no matches)".to_string()
+        } else if let Some(idx) = search_state.current_index {
+            format!(" [{}/{}]", idx + 1, search_state.matches.len())
+        } else {
+            String::new()
+        };
+
+        let full_text = format!("{}{}", search_text, match_info);
+
+        let search_span = Span::styled(
+            full_text,
+            Style::default()
+                .bg(RatatuiColor::Yellow)
+                .fg(RatatuiColor::Black)
+        );
+
+        let search_bar_area = ratatui::layout::Rect {
+            x: 0,
+            y: area.height.saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+
+        frame.render_widget(Paragraph::new(search_span), search_bar_area);
+        return;
+    }
+
     let doc_height = tree.document_height();
     let viewport_height = tree.viewport.height;
     let scroll_y = tree.viewport.scroll_y;
@@ -477,14 +828,25 @@ fn render_status_bar(
 
     let position = format!("Lines {}-{}/{} ", top_line, bottom_line, doc_height);
 
+    // Show search match count if we have matches
+    let search_info = if !search_state.matches.is_empty() {
+        if let Some(idx) = search_state.current_index {
+            format!(" Search: {}/{} ", idx + 1, search_state.matches.len())
+        } else {
+            format!(" Search: {} matches ", search_state.matches.len())
+        }
+    } else {
+        String::new()
+    };
+
     let help_text = "Press 'h' for help";
 
     // Pad status bar to fill entire width
-    let total_text_len = status.len() + position.len() + help_text.len();
+    let total_text_len = status.len() + position.len() + search_info.len() + help_text.len();
     let padding_len = area.width.saturating_sub(total_text_len as u16) as usize;
     let padding = " ".repeat(padding_len);
 
-    let full_status = format!("{}{}{}{}", status, position, padding, help_text);
+    let full_status = format!("{}{}{}{}{}", status, position, search_info, padding, help_text);
 
     let status_span = Span::styled(
         full_status,
@@ -639,6 +1001,244 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
 
     // Default: render text without escape sequences
     Span::styled(segment.text.as_str(), style)
+}
+
+fn render_image_sidebar(
+    frame: &mut ratatui::Frame,
+    images: &[ImageReference],
+    scroll_y: u16,
+    area: ratatui::layout::Rect,
+    _theme: &Theme,
+) {
+    // Draw sidebar border
+    let border_style = Style::default().fg(RatatuiColor::DarkGray);
+    for y in 0..area.height {
+        let border_span = Span::styled("│", border_style);
+        let border_area = ratatui::layout::Rect {
+            x: area.x,
+            y: area.y + y,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(RatatuiText::from(border_span)), border_area);
+    }
+
+    // Track used space to prevent overlaps
+    let mut next_available_y = 0u16;
+
+    // Render each image at its position
+    for image in images {
+        // Calculate display Y position (adjusted for scrolling)
+        let display_y = image.y_position.saturating_sub(scroll_y);
+
+        // Skip if image is off-screen
+        if display_y >= area.height {
+            continue;
+        }
+
+        // Ensure images don't overlap - use the later of the two positions
+        let actual_y = display_y.max(next_available_y);
+
+        // Skip if adjusted position is off-screen
+        if actual_y >= area.height {
+            continue;
+        }
+
+        // Try to load and render the image
+        if let Ok(img) = load_image(&image.path) {
+            // Available width in characters (sidebar width minus border/padding)
+            let max_width_chars = area.width.saturating_sub(3);
+
+            // Use a compact fixed height - ratatui-image will scale appropriately
+            // This ensures captions appear close to images
+            let image_height = 12u16.min(area.height.saturating_sub(actual_y));
+
+            let image_area = ratatui::layout::Rect {
+                x: area.x + 2,  // Offset from border
+                y: area.y + actual_y,
+                width: max_width_chars,
+                height: image_height,
+            };
+
+            // Render the image using ratatui-image
+            if let Ok(mut protocol) = create_image_protocol(&img) {
+                let image_widget = StatefulImage::default();
+                frame.render_stateful_widget(image_widget, image_area, &mut protocol);
+            } else {
+                // Fallback: show alt text if image can't be rendered
+                render_image_fallback(frame, &image.alt_text, image_area);
+            }
+
+            // Render caption immediately below image (no gap)
+            let caption_y = actual_y + image_height;
+            if caption_y < area.height {
+                let caption_text = format!("[IMAGE: {}]", image.alt_text);
+                let caption_span = Span::styled(
+                    caption_text,
+                    Style::default()
+                        .fg(RatatuiColor::DarkGray)
+                        .add_modifier(Modifier::ITALIC)
+                );
+                let caption_area = ratatui::layout::Rect {
+                    x: area.x + 2,
+                    y: area.y + caption_y,
+                    width: max_width_chars,
+                    height: 1,
+                };
+                frame.render_widget(Paragraph::new(RatatuiText::from(caption_span)), caption_area);
+            }
+
+            // Update next available position (image + caption + 1 line gap)
+            next_available_y = actual_y + image_height + 2;
+        } else {
+            // Image failed to load, show alt text
+            let fallback_area = ratatui::layout::Rect {
+                x: area.x + 2,
+                y: area.y + actual_y,
+                width: area.width.saturating_sub(3),
+                height: 3,
+            };
+            render_image_fallback(frame, &image.alt_text, fallback_area);
+            next_available_y = actual_y + 4; // 3 for text + 1 gap
+        }
+    }
+}
+
+fn load_image(path: &str) -> Result<image::DynamicImage, Box<dyn std::error::Error>> {
+    // Security: only load local files
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return Err("Remote images not supported".into());
+    }
+
+    let img = image::ImageReader::open(path)?.decode()?;
+    Ok(img)
+}
+
+fn create_image_protocol(
+    img: &image::DynamicImage,
+) -> Result<StatefulProtocol, Box<dyn std::error::Error>> {
+    // Query the terminal to detect capabilities (iTerm2, Kitty, Sixel, etc.)
+    // This will automatically detect and use the best available protocol
+    let picker = match Picker::from_query_stdio() {
+        Ok(picker) => picker,
+        Err(_) => {
+            // Fallback to manual font size if terminal query fails
+            Picker::from_fontsize((8, 12))
+        }
+    };
+
+    // Resize image to fit the area
+    let protocol = picker.new_resize_protocol(img.clone());
+
+    Ok(protocol)
+}
+
+fn render_image_fallback(
+    frame: &mut ratatui::Frame,
+    alt_text: &str,
+    area: ratatui::layout::Rect,
+) {
+    let fallback_text = format!("[{}]", alt_text);
+    let span = Span::styled(fallback_text, Style::default().fg(RatatuiColor::DarkGray));
+    frame.render_widget(Paragraph::new(RatatuiText::from(span)), area);
+}
+
+/// Border characters for drawing table borders
+struct BorderChars {
+    horizontal: &'static str,
+    vertical: &'static str,
+    top_left: &'static str,
+    top_right: &'static str,
+    bottom_left: &'static str,
+    bottom_right: &'static str,
+    cross: &'static str,
+    t_down: &'static str,
+    t_up: &'static str,
+    t_right: &'static str,
+    t_left: &'static str,
+}
+
+fn get_border_chars(style: BorderStyle) -> BorderChars {
+    match style {
+        BorderStyle::Single => BorderChars {
+            horizontal: "─",
+            vertical: "│",
+            top_left: "┌",
+            top_right: "┐",
+            bottom_left: "└",
+            bottom_right: "┘",
+            cross: "┼",
+            t_down: "┬",
+            t_up: "┴",
+            t_right: "├",
+            t_left: "┤",
+        },
+        BorderStyle::Double => BorderChars {
+            horizontal: "═",
+            vertical: "║",
+            top_left: "╔",
+            top_right: "╗",
+            bottom_left: "╚",
+            bottom_right: "╝",
+            cross: "╬",
+            t_down: "╦",
+            t_up: "╩",
+            t_right: "╠",
+            t_left: "╣",
+        },
+        BorderStyle::Rounded => BorderChars {
+            horizontal: "─",
+            vertical: "│",
+            top_left: "╭",
+            top_right: "╮",
+            bottom_left: "╰",
+            bottom_right: "╯",
+            cross: "┼",
+            t_down: "┬",
+            t_up: "┴",
+            t_right: "├",
+            t_left: "┤",
+        },
+        BorderStyle::Heavy => BorderChars {
+            horizontal: "━",
+            vertical: "┃",
+            top_left: "┏",
+            top_right: "┓",
+            bottom_left: "┗",
+            bottom_right: "┛",
+            cross: "╋",
+            t_down: "┳",
+            t_up: "┻",
+            t_right: "┣",
+            t_left: "┫",
+        },
+        BorderStyle::Ascii => BorderChars {
+            horizontal: "-",
+            vertical: "|",
+            top_left: "+",
+            top_right: "+",
+            bottom_left: "+",
+            bottom_right: "+",
+            cross: "+",
+            t_down: "+",
+            t_up: "+",
+            t_right: "+",
+            t_left: "+",
+        },
+        BorderStyle::None => BorderChars {
+            horizontal: " ",
+            vertical: " ",
+            top_left: " ",
+            top_right: " ",
+            bottom_left: " ",
+            bottom_right: " ",
+            cross: " ",
+            t_down: " ",
+            t_up: " ",
+            t_right: " ",
+            t_left: " ",
+        },
+    }
 }
 
 fn to_ratatui_color(color: Color) -> RatatuiColor {

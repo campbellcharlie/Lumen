@@ -5,12 +5,21 @@ use crate::theme::{Color, FontStyle, FontWeight};
 /// Unique identifier for layout nodes
 pub type NodeId = usize;
 
+/// Reference to an image that should be displayed in the sidebar
+#[derive(Debug, Clone)]
+pub struct ImageReference {
+    pub path: String,
+    pub alt_text: String,
+    pub y_position: u16,  // Line number where the image reference appears
+}
+
 /// Complete layout tree with viewport
 #[derive(Debug, Clone)]
 pub struct LayoutTree {
     pub root: LayoutNode,
     pub viewport: Viewport,
     pub hit_regions: Vec<HitRegion>,
+    pub images: Vec<ImageReference>,  // Images to display in sidebar
 }
 
 /// A positioned and sized layout node
@@ -84,6 +93,10 @@ pub enum LayoutElement {
     },
     TableCell,
     HorizontalRule,
+    Image {
+        path: String,
+        alt_text: String,
+    },
 }
 
 /// A line of text (result of inline layout)
