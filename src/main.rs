@@ -2,10 +2,48 @@
 
 use lumen::{layout_document, parse_markdown, render, LayoutTree, Theme, SearchState};
 use lumen::layout::{Viewport, LayoutElement};
+use lumen::ir::{Block, Inline};
 use std::fs;
 use std::io;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
+
+/// Check if a document contains any images
+fn document_has_images(document: &lumen::Document) -> bool {
+    fn block_has_images(block: &Block) -> bool {
+        match block {
+            Block::Paragraph { content } | Block::Heading { content, .. } => {
+                content.iter().any(inline_has_images)
+            }
+            Block::BlockQuote { blocks } | Block::Callout { content: blocks, .. } => {
+                blocks.iter().any(block_has_images)
+            }
+            Block::List { items, .. } => {
+                items.iter().any(|item| item.content.iter().any(block_has_images))
+            }
+            Block::Table { headers, rows, .. } => {
+                headers.iter().any(|cell| cell.content.iter().any(inline_has_images))
+                    || rows.iter().any(|row| {
+                        row.iter().any(|cell| cell.content.iter().any(inline_has_images))
+                    })
+            }
+            _ => false,
+        }
+    }
+
+    fn inline_has_images(inline: &Inline) -> bool {
+        match inline {
+            Inline::Image { .. } => true,
+            Inline::Strong(inlines) | Inline::Emphasis(inlines) | Inline::Strikethrough(inlines) => {
+                inlines.iter().any(inline_has_images)
+            }
+            Inline::Link { text, .. } => text.iter().any(inline_has_images),
+            _ => false,
+        }
+    }
+
+    document.blocks.iter().any(block_has_images)
+}
 
 fn main() -> io::Result<()> {
     // Set up panic handler to ensure terminal is always restored
@@ -84,13 +122,26 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
     // Ensure terminal is ALWAYS restored, even on error
     let cleanup_result = (|| -> io::Result<()> {
         let size = terminal.size()?;
-        let mut viewport = Viewport::new(size.width, size.height.saturating_sub(1)); // -1 for status bar
+        let full_width = size.width;
+        let height = size.height.saturating_sub(1); // -1 for status bar
 
         // Make document mutable for reloading
         let mut document = initial_document.clone();
 
+        // Check if document has images (for sidebar mode only)
+        let has_images = !inline_images && !no_images && document_has_images(&document);
+
+        // Adjust viewport width if sidebar will be shown (70% for content, 30% for sidebar)
+        let layout_width = if has_images {
+            (full_width * 70) / 100
+        } else {
+            full_width
+        };
+
+        let mut viewport = Viewport::new(layout_width, height);
+
         // Layout document
-        let mut tree = layout_document(&document, theme, viewport);
+        let mut tree = layout_document(&document, theme, viewport, inline_images);
 
         // Disable sidebar if requested
         if no_images {
@@ -179,7 +230,18 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
                                 Ok(markdown) => {
                                     let old_scroll = tree.viewport.scroll_y;
                                     document = parse_markdown(&markdown);
-                                    tree = layout_document(&document, theme, viewport);
+
+                                    // Recalculate layout width for sidebar
+                                    let size = terminal.size()?;
+                                    let has_images = !inline_images && !no_images && document_has_images(&document);
+                                    let layout_width = if has_images {
+                                        (size.width * 70) / 100
+                                    } else {
+                                        size.width
+                                    };
+                                    viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
+
+                                    tree = layout_document(&document, theme, viewport, inline_images);
                                     if no_images {
                                         tree.images.clear();
                                     }
@@ -213,8 +275,14 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
                     }
                     Event::Resize(_, _) => {
                         let size = terminal.size()?;
-                        viewport = Viewport::new(size.width, size.height.saturating_sub(1));
-                        tree = layout_document(&document, theme, viewport);
+                        let has_images = !inline_images && !no_images && document_has_images(&document);
+                        let layout_width = if has_images {
+                            (size.width * 70) / 100
+                        } else {
+                            size.width
+                        };
+                        viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
+                        tree = layout_document(&document, theme, viewport, inline_images);
                         needs_render = true;
                     }
                     _ => {}

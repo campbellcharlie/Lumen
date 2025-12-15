@@ -127,6 +127,10 @@ fn render_node(
         }
         LayoutElement::Paragraph { lines } => {
             render_paragraph(frame, lines, theme, node.rect.x, display_y, area, node.rect.y, scroll_y, search_state);
+            // Render children (e.g., inline images)
+            for child in &node.children {
+                render_node(frame, child, theme, scroll_y, area, search_state);
+            }
         }
         LayoutElement::CodeBlock { lang, lines } => {
             render_code_block(frame, lang, lines, theme, node.rect.x, display_y, node.rect.width, area, node.rect.y, scroll_y);
@@ -450,6 +454,10 @@ fn render_node(
 
             frame.render_widget(Paragraph::new(hr_text), hr_area);
         }
+        LayoutElement::Image { path, alt_text } => {
+            // Render inline image
+            render_inline_image(frame, path, alt_text, node.rect.x, display_y, node.rect.width, node.rect.height, area);
+        }
         _ => {
             // Render children for other types
             for child in &node.children {
@@ -647,6 +655,9 @@ fn render_code_block(
     let border_fg = to_ratatui_color(code_style.foreground);
     let border_style = Style::default().fg(border_fg).bg(to_ratatui_color(code_style.background));
 
+    // Constrain width to available area (important when sidebar is present)
+    let actual_width = width.min(area.width.saturating_sub(x));
+
     // Calculate block boundaries in document coordinates
     let block_start = node_y;
     let block_end = node_y + lines.len() as u16 + 2; // +2 for top and bottom borders
@@ -654,10 +665,10 @@ fn render_code_block(
     // Draw top border if visible
     if block_start >= scroll_y && block_start < scroll_y + area.height {
         let top_y = block_start - scroll_y;
-        let top_border = format!("┌{}┐", "─".repeat(width.saturating_sub(2) as usize));
+        let top_border = format!("┌{}┐", "─".repeat(actual_width.saturating_sub(2) as usize));
         frame.render_widget(
             Paragraph::new(RatatuiText::from(Span::styled(top_border, border_style))),
-            ratatui::layout::Rect { x, y: top_y, width, height: 1 }
+            ratatui::layout::Rect { x, y: top_y, width: actual_width, height: 1 }
         );
     }
 
@@ -675,7 +686,7 @@ fn render_code_block(
             // Right border
             frame.render_widget(
                 Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
-                ratatui::layout::Rect { x: x + width - 1, y: display_line_y, width: 1, height: 1 }
+                ratatui::layout::Rect { x: x + actual_width - 1, y: display_line_y, width: 1, height: 1 }
             );
         }
     }
@@ -684,10 +695,10 @@ fn render_code_block(
     let bottom_y = block_end - 1;
     if bottom_y >= scroll_y && bottom_y < scroll_y + area.height {
         let display_bottom_y = bottom_y - scroll_y;
-        let bottom_border = format!("└{}┘", "─".repeat(width.saturating_sub(2) as usize));
+        let bottom_border = format!("└{}┘", "─".repeat(actual_width.saturating_sub(2) as usize));
         frame.render_widget(
             Paragraph::new(RatatuiText::from(Span::styled(bottom_border, border_style))),
-            ratatui::layout::Rect { x, y: display_bottom_y, width, height: 1 }
+            ratatui::layout::Rect { x, y: display_bottom_y, width: actual_width, height: 1 }
         );
     }
 
@@ -702,7 +713,7 @@ fn render_code_block(
             let badge_text = RatatuiText::from(badge_span);
 
             let badge_area = ratatui::layout::Rect {
-                x: x + width.saturating_sub(lang_name.len() as u16 + 3),
+                x: x + actual_width.saturating_sub(lang_name.len() as u16 + 3),
                 y: display_y,
                 width: lang_name.len() as u16 + 2,
                 height: 1,
@@ -740,7 +751,7 @@ fn render_code_block(
         let display_line_y = line_y_in_doc - scroll_y;
 
         // Pad line with spaces to fill the full width so background extends across
-        let content_width = width.saturating_sub(2) as usize;
+        let content_width = actual_width.saturating_sub(2) as usize;
         let padded_line = format!("{:width$}", &lines[i], width = content_width);
 
         let span = Span::styled(padded_line, style);
@@ -750,7 +761,7 @@ fn render_code_block(
         let line_area = ratatui::layout::Rect {
             x: x + 1,
             y: display_line_y,
-            width: width.saturating_sub(2),
+            width: actual_width.saturating_sub(2),
             height: 1,
         };
 
@@ -1141,6 +1152,72 @@ fn render_image_fallback(
     let fallback_text = format!("[{}]", alt_text);
     let span = Span::styled(fallback_text, Style::default().fg(RatatuiColor::DarkGray));
     frame.render_widget(Paragraph::new(RatatuiText::from(span)), area);
+}
+
+fn render_inline_image(
+    frame: &mut ratatui::Frame,
+    path: &str,
+    alt_text: &str,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
+    area: ratatui::layout::Rect,
+) {
+    // Skip if image is off-screen
+    if y >= area.height {
+        return;
+    }
+
+    // Calculate actual available height
+    let available_height = height.min(area.height.saturating_sub(y));
+
+    // Try to load and render the image
+    if let Ok(img) = load_image(path) {
+        let image_area = ratatui::layout::Rect {
+            x,
+            y,
+            width: width.saturating_sub(2), // Leave some margin
+            height: available_height.saturating_sub(2), // Leave space for caption
+        };
+
+        // Render the image using ratatui-image
+        if let Ok(mut protocol) = create_image_protocol(&img) {
+            let image_widget = StatefulImage::default();
+            frame.render_stateful_widget(image_widget, image_area, &mut protocol);
+        } else {
+            // Fallback: show alt text if image can't be rendered
+            render_image_fallback(frame, alt_text, image_area);
+        }
+
+        // Render caption below image
+        let caption_y = y + available_height.saturating_sub(1);
+        if caption_y < area.height {
+            let caption_text = format!("[IMAGE: {}]", alt_text);
+            let caption_span = Span::styled(
+                caption_text,
+                Style::default()
+                    .fg(RatatuiColor::DarkGray)
+                    .add_modifier(Modifier::ITALIC)
+            );
+            let caption_area = ratatui::layout::Rect {
+                x,
+                y: caption_y,
+                width,
+                height: 1,
+            };
+            frame.render_widget(Paragraph::new(RatatuiText::from(caption_span)), caption_area);
+        }
+    } else {
+        // Image failed to load, show alt text
+        let fallback_area = ratatui::layout::Rect {
+            x,
+            y,
+            width,
+            height: available_height.min(3),
+        };
+        render_image_fallback(frame, alt_text, fallback_area);
+    }
 }
 
 /// Border characters for drawing table borders

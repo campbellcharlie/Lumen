@@ -6,7 +6,7 @@ use crate::ir::{Block, CalloutKind, Document, Inline, ListItem};
 use crate::theme::Theme;
 
 /// Layout a document into a positioned tree
-pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -> LayoutTree {
+pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport, inline_images: bool) -> LayoutTree {
     let mut node_counter = 0;
     let mut hit_regions = Vec::new();
     let mut images = Vec::new();
@@ -20,6 +20,7 @@ pub fn layout_document(document: &Document, theme: &Theme, viewport: Viewport) -
         &mut node_counter,
         &mut hit_regions,
         &mut images,
+        inline_images,
     );
 
     // Calculate actual document height as the maximum (y + height) of all children
@@ -53,6 +54,7 @@ fn layout_blocks(
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> Vec<LayoutNode> {
     let mut nodes = Vec::new();
 
@@ -61,7 +63,7 @@ fn layout_blocks(
         let margin_top = block_margin_top(block, theme);
         y += margin_top;
 
-        let node = layout_block(block, x, y, width, theme, node_counter, hit_regions, images);
+        let node = layout_block(block, x, y, width, theme, node_counter, hit_regions, images, inline_images);
         y += node.rect.height;
 
         // Add bottom margin
@@ -83,32 +85,33 @@ fn layout_block(
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     *node_counter += 1;
     let id = *node_counter;
 
     match block {
         Block::Heading { level, content } => {
-            layout_heading(*level, content, x, y, width, theme, id, hit_regions, images)
+            layout_heading(*level, content, x, y, width, theme, id, hit_regions, images, inline_images)
         }
         Block::Paragraph { content } => {
-            layout_paragraph(content, x, y, width, theme, id, images)
+            layout_paragraph(content, x, y, width, theme, id, images, inline_images, node_counter)
         }
         Block::CodeBlock { lang, code } => {
             layout_code_block(lang.as_deref(), code, x, y, width, theme, id, hit_regions, images)
         }
         Block::BlockQuote { blocks } => {
-            layout_blockquote(blocks, x, y, width, theme, id, node_counter, hit_regions, images)
+            layout_blockquote(blocks, x, y, width, theme, id, node_counter, hit_regions, images, inline_images)
         }
         Block::List { ordered, start, items } => {
-            layout_list(*ordered, *start, items, x, y, width, theme, id, node_counter, hit_regions, images)
+            layout_list(*ordered, *start, items, x, y, width, theme, id, node_counter, hit_regions, images, inline_images)
         }
         Block::Table { headers, rows, alignment } => {
-            layout_table(headers, rows, alignment, x, y, width, theme, id, node_counter, images)
+            layout_table(headers, rows, alignment, x, y, width, theme, id, node_counter, images, inline_images)
         }
         Block::HorizontalRule => layout_horizontal_rule(x, y, width, theme, id),
         Block::Callout { kind, content, .. } => {
-            layout_callout(*kind, content, x, y, width, theme, id, node_counter, hit_regions, images)
+            layout_callout(*kind, content, x, y, width, theme, id, node_counter, hit_regions, images, inline_images)
         }
     }
 }
@@ -123,8 +126,9 @@ fn layout_heading(
     id: NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
-    let lines = layout_text(content, width, theme, y, images);
+    let (lines, _inline_imgs) = layout_text(content, width, theme, y, images, inline_images);
     let text = content.iter().map(|i| i.to_plain_text()).collect::<String>();
     let height = lines.len() as u16;
 
@@ -155,15 +159,45 @@ fn layout_paragraph(
     theme: &Theme,
     id: NodeId,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
+    node_counter: &mut NodeId,
 ) -> LayoutNode {
-    let lines = layout_text(content, width, theme, y, images);
-    let height = lines.len() as u16;
+    let (lines, inline_imgs) = layout_text(content, width, theme, y, images, inline_images);
+    let mut height = lines.len() as u16;
+    let mut children = Vec::new();
+
+    // If inline images mode is enabled, create Image child nodes
+    if inline_images && !inline_imgs.is_empty() {
+        // Default image height in terminal rows (can be adjusted)
+        const IMAGE_HEIGHT: u16 = 12;
+
+        for (line_idx, path, alt_text) in inline_imgs {
+            *node_counter += 1;
+            let img_y = y + line_idx + 1; // Position image after the line it appears in
+
+            // Create an Image layout node
+            let image_node = LayoutNode {
+                id: *node_counter,
+                rect: Rectangle::new(x, img_y, width, IMAGE_HEIGHT),
+                element: LayoutElement::Image {
+                    path,
+                    alt_text,
+                },
+                children: Vec::new(),
+                style: ComputedStyle::default(),
+            };
+
+            children.push(image_node);
+            // Add image height to total paragraph height
+            height += IMAGE_HEIGHT;
+        }
+    }
 
     LayoutNode {
         id,
         rect: Rectangle::new(x, y, width, height),
         element: LayoutElement::Paragraph { lines },
-        children: Vec::new(),
+        children,
         style: ComputedStyle::default(),
     }
 }
@@ -215,6 +249,7 @@ fn layout_blockquote(
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     let indent = theme.spacing.blockquote_indent;
     let content_width = width.saturating_sub(indent);
@@ -228,6 +263,7 @@ fn layout_blockquote(
         node_counter,
         hit_regions,
         images,
+        inline_images,
     );
 
     let height = children.iter().map(|n| n.rect.height).sum::<u16>();
@@ -252,6 +288,7 @@ fn layout_callout(
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     // Callouts have a 2-character indent for the icon/border
     let indent = 2u16;
@@ -266,6 +303,7 @@ fn layout_callout(
         node_counter,
         hit_regions,
         images,
+        inline_images,
     );
 
     let height = children.iter().map(|n| n.rect.height).sum::<u16>().max(1);
@@ -291,6 +329,7 @@ fn layout_list(
     node_counter: &mut NodeId,
     hit_regions: &mut Vec<HitRegion>,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     let mut children = Vec::new();
     let mut current_y = y;
@@ -319,6 +358,7 @@ fn layout_list(
             node_counter,
             hit_regions,
             images,
+            inline_images,
         );
 
         // Calculate actual height by finding the Y span of children
@@ -369,6 +409,7 @@ fn layout_table(
     id: NodeId,
     node_counter: &mut NodeId,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     let column_widths = compute_column_widths(headers, rows, theme, width);
 
@@ -389,6 +430,7 @@ fn layout_table(
             node_counter,
             true,
             images,
+            inline_images,
         );
         current_y += row_node.rect.height;
         children.push(row_node);
@@ -408,6 +450,7 @@ fn layout_table(
             node_counter,
             false,
             images,
+            inline_images,
         );
         current_y += row_node.rect.height;
         children.push(row_node);
@@ -438,6 +481,7 @@ fn layout_table_row(
     node_counter: &mut NodeId,
     is_header: bool,
     images: &mut Vec<ImageReference>,
+    inline_images: bool,
 ) -> LayoutNode {
     let mut children = Vec::new();
     let mut current_x = x;
@@ -451,7 +495,7 @@ fn layout_table_row(
         *node_counter += 1;
         let cell_id = *node_counter;
 
-        let lines = layout_text(&cell.content, content_width, theme, y, images);
+        let (lines, _inline_imgs) = layout_text(&cell.content, content_width, theme, y, images, inline_images);
         let cell_height = lines.len() as u16 + padding * 2;
         max_height = max_height.max(cell_height);
 
@@ -611,7 +655,7 @@ mod tests {
             },
         ]);
 
-        let tree = layout_document(&doc, &theme, viewport);
+        let tree = layout_document(&doc, &theme, viewport, false);
 
         assert_eq!(tree.root.children.len(), 2);
         assert!(matches!(
@@ -634,7 +678,7 @@ mod tests {
             content: vec![Inline::Text("Test Heading".to_string())],
         }]);
 
-        let tree = layout_document(&doc, &theme, viewport);
+        let tree = layout_document(&doc, &theme, viewport, false);
 
         assert_eq!(tree.hit_regions.len(), 1);
         assert!(matches!(
@@ -653,7 +697,7 @@ mod tests {
             code: "fn main() {}".to_string(),
         }]);
 
-        let tree = layout_document(&doc, &theme, viewport);
+        let tree = layout_document(&doc, &theme, viewport, false);
 
         assert_eq!(tree.hit_regions.len(), 1);
         assert!(matches!(
