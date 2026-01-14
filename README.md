@@ -42,6 +42,8 @@ cargo run --release -- DEMO.md neon
 | `PageUp` | Scroll up one page |
 | `g` / `Home` | Go to top of document |
 | `G` / `End` | Go to bottom of document |
+| `a` | Cycle through links (table of contents navigation) |
+| `Enter` | Follow selected link (jump to anchor) |
 | `q` / `Esc` | Quit |
 
 ---
@@ -51,9 +53,10 @@ cargo run --release -- DEMO.md neon
 ### ✓ Implemented (Phases 0-4)
 
 - **Phase 1**: Markdown parser with GFM support
-  - Headings, paragraphs, lists, tables, code blocks
+  - Headings, paragraphs, lists (including deep nesting 4+ levels), tables, code blocks
   - Task lists, strikethrough, links, images
   - Blockquotes with nesting
+  - Proper tight list handling for correct structure
 
 - **Phase 2**: CSS-like theming system
   - 3 built-in themes (Docs, Neon, Minimal)
@@ -64,15 +67,16 @@ cargo run --release -- DEMO.md neon
 - **Phase 3**: Layout engine
   - Vertical flow layout with proper margins
   - Inline text wrapping (word-boundary + long-word breaking)
-  - Table layout with column distribution
+  - Table layout with column distribution and accurate border rendering
   - Viewport and scrolling model
-  - Hit testing for interactive elements
+  - Hit regions for interactive elements (links, anchors)
 
 - **Phase 4**: Terminal renderer
   - Ratatui-based rendering with double-buffering
   - Rich colors (24-bit RGB, 256-color, 16-color)
   - Box-drawing characters for borders
-  - Keyboard navigation
+  - Keyboard navigation with link cycling and anchor jumping
+  - Visual link highlighting for selected links
   - Status bar with position indicator
 
 ### ⏳ Planned (Future Phases)
