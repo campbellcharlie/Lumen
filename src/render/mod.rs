@@ -255,40 +255,52 @@ fn render_node(
             }
         }
         LayoutElement::ListItem { marker, .. } => {
-            // Render marker with style
-            let marker_style =
-                Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
+            // Check if this list item contains ONLY a nested list (no paragraphs)
+            // This handles the pulldown-cmark quirk where "- Text:\n  - nested" merges
+            // the parent text into the first child item
+            let has_only_nested_list = node.children.len() == 1
+                && matches!(
+                    node.children[0].element,
+                    LayoutElement::List { .. }
+                );
 
-            // Calculate display width (not byte length)
-            // The bullet "•" is 3 bytes but displays as 1 char width
-            let marker_display_width = marker.chars().count() as u16;
+            // Only render marker if this item has actual content (not just a nested list)
+            if !has_only_nested_list {
+                // Render marker with style
+                let marker_style =
+                    Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
 
-            // Calculate allocated marker space based on where the content starts
-            // This allows us to right-align the marker for consistent alignment
-            let allocated_marker_space = if let Some(first_child) = node.children.first() {
-                // Content starts at first_child.rect.x, with 1-space gap after marker
-                first_child.rect.x.saturating_sub(node.rect.x).saturating_sub(1)
-            } else {
-                marker_display_width
-            };
+                // Calculate display width (not byte length)
+                // The bullet "•" is 3 bytes but displays as 1 char width
+                let marker_display_width = marker.chars().count() as u16;
 
-            // Right-align the marker within the allocated space
-            let marker_x_offset = allocated_marker_space.saturating_sub(marker_display_width);
+                // Calculate allocated marker space based on where the content starts
+                // This allows us to right-align the marker for consistent alignment
+                let allocated_marker_space = if let Some(first_child) = node.children.first() {
+                    // Content starts at first_child.rect.x, with 1-space gap after marker
+                    first_child.rect.x.saturating_sub(node.rect.x).saturating_sub(1)
+                } else {
+                    marker_display_width
+                };
 
-            let marker_area = ratatui::layout::Rect {
-                x: node.rect.x + x_offset + marker_x_offset,
-                y: display_y,
-                width: marker_display_width,
-                height: 1,
-            };
+                // Right-align the marker within the allocated space
+                let marker_x_offset = allocated_marker_space.saturating_sub(marker_display_width);
 
-            frame.render_widget(
-                Paragraph::new(RatatuiText::from(Span::styled(
-                    marker.as_str(),
-                    marker_style,
-                ))),
-                marker_area,
-            );
+                let marker_area = ratatui::layout::Rect {
+                    x: node.rect.x + x_offset + marker_x_offset,
+                    y: display_y,
+                    width: marker_display_width,
+                    height: 1,
+                };
+
+                frame.render_widget(
+                    Paragraph::new(RatatuiText::from(Span::styled(
+                        marker.as_str(),
+                        marker_style,
+                    ))),
+                    marker_area,
+                );
+            }
 
             // Render children - they are positioned by the layout
             for child in &node.children {
