@@ -210,7 +210,16 @@ fn layout_heading(
     let height = lines.len() as u16;
 
     // Add hit region for heading
-    let heading_id = format!("h{}-{}", level, text.to_lowercase().replace(' ', "-"));
+    // Generate standard markdown anchor ID (lowercase, alphanumeric + hyphens only)
+    let heading_id = text
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
     ctx.hit_regions.push(HitRegion {
         rect: Rectangle::new(x, y, width, height),
         element: HitElement::Heading {
