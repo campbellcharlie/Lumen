@@ -284,9 +284,14 @@ impl MarkdownConverter {
                 if let Some(BlockContext::List {
                     ordered,
                     start,
-                    items,
+                    mut items,
                 }) = self.block_stack.pop()
                 {
+                    // Fix pulldown-cmark quirk: when markdown has "- Label:\n  - nested",
+                    // it merges "Label:" into the first nested item instead of keeping
+                    // it in the parent. Detect and fix this pattern.
+                    fix_merged_list_labels(&mut items);
+
                     self.push_block(Block::List {
                         ordered,
                         start,
@@ -513,5 +518,92 @@ impl MarkdownConverter {
 
     fn finish(self) -> Document {
         self.document
+    }
+}
+
+/// Fix pulldown-cmark's incorrect parsing of nested lists with labels.
+///
+/// When markdown has:
+/// ```markdown
+/// - **Label:**
+///   - Nested item
+/// ```
+///
+/// pulldown-cmark merges "Label:" into the first nested item's paragraph,
+/// creating a structure where the parent ListItem contains only a nested List,
+/// and the first nested ListItem contains both "Label:" and "Nested item" text.
+///
+/// This function detects that pattern and restructures it so "Label:" becomes
+/// a paragraph in the parent ListItem.
+fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
+    for item in items.iter_mut() {
+        // Check if this item has only one child block, and it's a List
+        if item.content.len() == 1 {
+            // First, check if we need to extract a label and get the inline content
+            let extracted_label = if let Block::List { items: nested_items, .. } = &mut item.content[0] {
+                if let Some(first_nested) = nested_items.first_mut() {
+                    if let Some(Block::Paragraph { content }) = first_nested.content.first_mut() {
+                        // Check if paragraph starts with Strong followed by other content
+                        if content.len() >= 2 {
+                            if let Inline::Strong(strong_content) = &content[0] {
+                                // Check if strong text ends with ":"
+                                let ends_with_colon = strong_content.iter().any(|inline| {
+                                    if let Inline::Text(text) = inline {
+                                        text.trim().ends_with(':')
+                                    } else {
+                                        false
+                                    }
+                                });
+
+                                if ends_with_colon {
+                                    // Extract the Strong prefix
+                                    Some(content.remove(0))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // If we extracted a label, add it as a paragraph to the parent
+            if let Some(prefix) = extracted_label {
+                item.content.insert(
+                    0,
+                    Block::Paragraph {
+                        content: vec![prefix],
+                    },
+                );
+
+                // Clean up empty paragraphs in the first nested item
+                if let Block::List { items: nested_items, .. } = &mut item.content[1] {
+                    if let Some(first_nested) = nested_items.first_mut() {
+                        if let Some(Block::Paragraph { content }) = first_nested.content.first() {
+                            if content.is_empty() {
+                                first_nested.content.remove(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively fix any nested lists in this item's content
+        for block in &mut item.content {
+            if let Block::List { items: nested_items, .. } = block {
+                fix_merged_list_labels(nested_items);
+            }
+        }
     }
 }
