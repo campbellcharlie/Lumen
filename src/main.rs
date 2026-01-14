@@ -239,6 +239,7 @@ fn run_interactive(
         let mut search_state = SearchState::new();
         let mut file_jump_buffer = String::new(); // Buffer for typing file numbers
         let mut file_jump_mode = false; // Whether we're in file jump mode
+        let mut selected_link_index: Option<usize> = None; // Currently selected link for navigation
 
         // Enable mouse capture if preference is set
         if mouse_enabled {
@@ -261,6 +262,7 @@ fn run_interactive(
                     show_file_sidebar,
                     file_jump_mode,
                     &file_jump_buffer,
+                    selected_link_index,
                 )?;
                 last_render = now;
                 needs_render = false;
@@ -380,6 +382,62 @@ fn run_interactive(
                         } else if key.code == KeyCode::Char('h') {
                             show_help = !show_help;
                             needs_render = true;
+                        } else if key.code == KeyCode::Char('a') {
+                            // Cycle through anchor links
+                            let link_count = tree.hit_regions.iter()
+                                .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                                .count();
+
+                            if link_count > 0 {
+                                selected_link_index = Some(match selected_link_index {
+                                    None => 0,
+                                    Some(idx) => (idx + 1) % link_count,
+                                });
+
+                                // Scroll to make selected link visible
+                                if let Some(link_idx) = selected_link_index {
+                                    let link_regions: Vec<_> = tree.hit_regions.iter()
+                                        .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                                        .collect();
+
+                                    if let Some(region) = link_regions.get(link_idx) {
+                                        tree.viewport.scroll_to_clamped(
+                                            region.rect.y.saturating_sub(3),
+                                            tree.document_height(),
+                                        );
+                                    }
+                                }
+                                needs_render = true;
+                            }
+                        } else if key.code == KeyCode::Enter && selected_link_index.is_some() {
+                            // Follow the selected link
+                            if let Some(link_idx) = selected_link_index {
+                                let link_regions: Vec<_> = tree.hit_regions.iter()
+                                    .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                                    .collect();
+
+                                if let Some(region) = link_regions.get(link_idx) {
+                                    if let lumen::layout::HitElement::Link { url, .. } = &region.element {
+                                        // Handle internal anchor links
+                                        if url.starts_with('#') {
+                                            let anchor = &url[1..]; // Remove the '#'
+
+                                            // Find the heading with this anchor
+                                            for heading_region in &tree.hit_regions {
+                                                if let lumen::layout::HitElement::Heading { id, .. } = &heading_region.element {
+                                                    if id == anchor {
+                                                        // Jump to this heading
+                                                        tree.viewport.scroll_y = heading_region.rect.y;
+                                                        selected_link_index = None; // Deselect after jump
+                                                        needs_render = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         } else if key.code == KeyCode::Char('m') {
                             // Toggle mouse mode
                             mouse_enabled = !mouse_enabled;

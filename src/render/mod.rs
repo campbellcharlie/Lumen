@@ -99,6 +99,7 @@ pub fn render(
     show_file_sidebar: bool,
     file_jump_mode: bool,
     file_jump_buffer: &str,
+    selected_link_index: Option<usize>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
@@ -137,6 +138,15 @@ pub fn render(
         // Calculate X offset for content (to account for file sidebar)
         let content_x_offset = content_area.x;
 
+        // Get selected link region if any
+        let selected_link_rect = selected_link_index.and_then(|idx| {
+            tree.hit_regions
+                .iter()
+                .filter(|r| matches!(r.element, crate::layout::HitElement::Link { .. }))
+                .nth(idx)
+                .map(|r| r.rect)
+        });
+
         for node in &tree.root.children {
             render_node(
                 frame,
@@ -146,6 +156,7 @@ pub fn render(
                 content_area,
                 search_state,
                 content_x_offset,
+                selected_link_rect,
             );
         }
 
@@ -185,6 +196,7 @@ fn render_node(
     area: ratatui::layout::Rect,
     search_state: &SearchState,
     x_offset: u16,
+    selected_link_rect: Option<crate::layout::Rectangle>,
 ) {
     // Calculate display position
     let display_y = node.rect.y.saturating_sub(scroll_y);
@@ -229,10 +241,11 @@ fn render_node(
                 node.rect.y,
                 scroll_y,
                 search_state,
+                selected_link_rect,
             );
             // Render children (e.g., inline images)
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::CodeBlock { lang, lines } => {
@@ -251,7 +264,7 @@ fn render_node(
         }
         LayoutElement::List { .. } => {
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::ListItem { marker, .. } => {
@@ -292,7 +305,7 @@ fn render_node(
 
             // Render children - they are positioned by the layout
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::BlockQuote => {
@@ -313,7 +326,7 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::Callout { kind } => {
@@ -393,7 +406,7 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::Table { .. } => {
@@ -423,7 +436,7 @@ fn render_node(
             // Render table rows first
             // (top border will be drawn after to avoid being overwritten by vertical bars)
             for (i, child) in node.children.iter().enumerate() {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
 
                 // Draw row separator or bottom border
                 let row_bottom_y = child.rect.y + child.rect.height;
@@ -566,7 +579,7 @@ fn render_node(
 
             // Render cell content first
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
 
             // Collect column X positions (adjusted for offset)
@@ -626,7 +639,7 @@ fn render_node(
         LayoutElement::TableCell => {
             // Just render cell content - borders handled by TableRow
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
         LayoutElement::HorizontalRule => {
@@ -661,7 +674,7 @@ fn render_node(
         _ => {
             // Render children for other types
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
             }
         }
     }
@@ -720,6 +733,7 @@ fn render_paragraph(
     node_y: u16,
     _scroll_y: u16,
     search_state: &SearchState,
+    selected_link_rect: Option<crate::layout::Rectangle>,
 ) {
     for (i, line) in lines.iter().enumerate() {
         let y = display_y + i as u16;
@@ -747,11 +761,22 @@ fn render_paragraph(
 
         // If no matches on this line, render normally
         if line_matches.is_empty() {
-            spans.extend(
-                line.segments
-                    .iter()
-                    .map(|seg| text_segment_to_span(seg, theme)),
-            );
+            let mut current_x = x;
+            for seg in &line.segments {
+                let is_selected_link = if let Some(sel_rect) = selected_link_rect {
+                    // Check if this segment overlaps the selected link rectangle
+                    current_x >= sel_rect.x
+                        && current_x < sel_rect.x + sel_rect.width
+                        && line_y_in_doc >= sel_rect.y
+                        && line_y_in_doc < sel_rect.y + sel_rect.height
+                        && seg.link_url.is_some()
+                } else {
+                    false
+                };
+
+                spans.push(text_segment_to_span(seg, theme, is_selected_link));
+                current_x += seg.text.chars().count() as u16;
+            }
         } else {
             // Render with highlighting
             let mut current_x = x;
@@ -1169,6 +1194,10 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         "  n            Jump to next heading",
         "  p            Jump to previous heading",
         "",
+        "Link Navigation:",
+        "  a            Cycle through links",
+        "  Enter        Follow selected link",
+        "",
         "File Navigation:",
         "  Tab          Switch to next file",
         "  Shift+Tab    Switch to previous file",
@@ -1247,7 +1276,7 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
     frame.render_widget(paragraph, help_area);
 }
 
-fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a> {
+fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme, is_selected_link: bool) -> Span<'a> {
     let mut style = Style::default();
 
     if let Some(fg) = segment.style.foreground {
@@ -1264,6 +1293,11 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
 
     if segment.style.style == FontStyle::Italic {
         style = style.add_modifier(Modifier::ITALIC)
+    }
+
+    // Add inverse highlighting for selected link
+    if is_selected_link {
+        style = style.add_modifier(Modifier::REVERSED);
     }
 
     // NOTE: OSC 8 clickable links and iTerm2 inline images are DISABLED by default
