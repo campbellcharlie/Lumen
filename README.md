@@ -6,20 +6,30 @@ Lumen renders Markdown documents with rich layout, theming, and smooth scrolling
 
 ---
 
-## Quick Start
+## Installation
 
 ```bash
 # Build the project
 cargo build --release
 
-# View a markdown file
-cargo run --release -- DEMO.md
+# The binary will be at:
+./target/release/lumen
+```
+
+## Usage
+
+```bash
+# View a single file
+lumen README.md
+
+# View multiple files (use Tab to switch between them)
+lumen file1.md file2.md file3.md
 
 # Use a different theme
-cargo run --release -- DEMO.md neon
+lumen README.md neon
 
-# Or use the binary directly
-./target/release/lumen README.md
+# View all markdown files in current directory
+lumen *.md
 ```
 
 ### Available Themes
@@ -32,6 +42,7 @@ cargo run --release -- DEMO.md neon
 
 ## Keyboard Shortcuts
 
+### Navigation
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Scroll down one line |
@@ -42,68 +53,73 @@ cargo run --release -- DEMO.md neon
 | `PageUp` | Scroll up one page |
 | `g` / `Home` | Go to top of document |
 | `G` / `End` | Go to bottom of document |
-| `a` | Cycle through links (table of contents navigation) |
+
+### Links & Navigation
+| Key | Action |
+|-----|--------|
+| `a` | Cycle through links (for table of contents navigation) |
 | `Enter` | Follow selected link (jump to anchor) |
+
+### File Management
+| Key | Action |
+|-----|--------|
+| `Tab` | Switch to next file (when multiple files are open) |
+| `Shift+Tab` | Switch to previous file |
+
+### General
+| Key | Action |
+|-----|--------|
 | `q` / `Esc` | Quit |
 
 ---
 
 ## Features
 
-### ✓ Implemented (Phases 0-4)
+### Markdown Support
+- Full GFM (GitHub Flavored Markdown) support
+- Headings, paragraphs, lists (including deep nesting 4+ levels)
+- Tables with accurate border rendering
+- Code blocks, task lists, strikethrough
+- Links, images, blockquotes with nesting
+- Proper tight list handling for correct structure
 
-- **Phase 1**: Markdown parser with GFM support
-  - Headings, paragraphs, lists (including deep nesting 4+ levels), tables, code blocks
-  - Task lists, strikethrough, links, images
-  - Blockquotes with nesting
-  - Proper tight list handling for correct structure
+### Theming
+- 3 built-in themes: Docs (default), Neon, Minimal
+- Color palettes with RGB/ANSI fallbacks
+- Multiple border styles: Single, Double, Rounded, Heavy, ASCII
+- Typography and spacing configuration via YAML
 
-- **Phase 2**: CSS-like theming system
-  - 3 built-in themes (Docs, Neon, Minimal)
-  - Color palettes with RGB/ANSI fallbacks
-  - Border styles (Single, Double, Rounded, Heavy, ASCII)
-  - Typography and spacing configuration
+### Layout & Rendering
+- Vertical flow layout with proper margins
+- Smart text wrapping (word-boundary + long-word breaking)
+- Table layout with column distribution
+- Rich colors (24-bit RGB, 256-color, 16-color)
+- Box-drawing characters for borders
+- Double-buffered rendering for smooth scrolling
 
-- **Phase 3**: Layout engine
-  - Vertical flow layout with proper margins
-  - Inline text wrapping (word-boundary + long-word breaking)
-  - Table layout with column distribution and accurate border rendering
-  - Viewport and scrolling model
-  - Hit regions for interactive elements (links, anchors)
-
-- **Phase 4**: Terminal renderer
-  - Ratatui-based rendering with double-buffering
-  - Rich colors (24-bit RGB, 256-color, 16-color)
-  - Box-drawing characters for borders
-  - Keyboard navigation with link cycling and anchor jumping
-  - Visual link highlighting for selected links
-  - Status bar with position indicator
-
-### ⏳ Planned (Future Phases)
-
-- **Phase 5**: Media layer (iTerm2/Kitty/SIXEL images)
-- **Phase 6**: Enhanced UX (search, syntax highlighting, minimap)
-- **Phase 7**: Packaging and distribution
+### Interactive Navigation
+- Keyboard-driven navigation (vim-style bindings)
+- Link cycling and anchor jumping for table of contents
+- Visual link highlighting for selected links
+- Multi-file support with tab switching
+- Status bar with position indicator and file name
+- Hit regions for interactive elements
 
 ---
 
 ## Architecture
 
+Lumen uses a multi-stage rendering pipeline:
+
 ```
-Markdown → IR (pulldown-cmark)
-            ↓
-     Theme + Layout Engine
-            ↓
-     Terminal Renderer (Ratatui)
+Markdown → IR (pulldown-cmark) → Theme + Layout → Terminal Renderer (Ratatui)
 ```
 
-### Key Design Decisions
-
-1. **Stable IR**: Frozen intermediate representation prevents downstream churn
-2. **Token-based theming**: No CSS selectors, just element-type styling
-3. **Two-phase layout**: Measure intrinsic sizes, then assign positions
-4. **Character-grid coordinates**: Natural fit for terminal rendering
-5. **Vertical-only scrolling**: Simpler v1, matches terminal usage
+**Key design decisions:**
+- Stable IR prevents downstream churn when parser changes
+- Token-based theming (no CSS selectors, just element-type styling)
+- Two-phase layout: measure intrinsic sizes, then assign positions
+- Character-grid coordinates for natural terminal rendering
 
 ---
 
@@ -112,32 +128,24 @@ Markdown → IR (pulldown-cmark)
 ```
 Lumen/
 ├── src/
-│   ├── ir/           # Intermediate representation (Phase 1)
-│   ├── parser/       # Markdown → IR (Phase 1)
-│   ├── theme/        # Theming system (Phase 2)
-│   ├── layout/       # Layout engine (Phase 3)
-│   ├── render/       # Terminal renderer (Phase 4)
+│   ├── ir/           # Intermediate representation
+│   ├── parser/       # Markdown → IR
+│   ├── theme/        # Theming system
+│   ├── layout/       # Layout engine
+│   ├── render/       # Terminal renderer
 │   ├── lib.rs        # Public API
 │   └── main.rs       # Interactive viewer binary
 ├── themes/           # YAML theme files
-├── tests/
-│   ├── fixtures/     # Test markdown documents
-│   └── *_tests.rs    # Integration tests
-└── examples/         # Usage examples
+└── examples/         # Demo programs
 ```
 
 ---
 
-## Building Blocks
+## Dependencies
 
-**Core Dependencies**:
 - [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) — Fast, spec-compliant Markdown parser
 - [Ratatui](https://github.com/ratatui/ratatui) — Terminal UI framework
 - [crossterm](https://github.com/crossterm-rs/crossterm) — Cross-platform terminal manipulation
-
-**Inspiration**:
-- [Carbonyl](https://github.com/fathyb/carbonyl) — Browser in terminal
-- [Glow](https://github.com/charmbracelet/glow) — Markdown TUI viewer
 
 ---
 
@@ -146,12 +154,7 @@ Lumen/
 ### Running Tests
 
 ```bash
-# All tests (56 passing)
 cargo test
-
-# Specific test suite
-cargo test theme
-cargo test layout
 ```
 
 ### Examples
@@ -166,16 +169,6 @@ cargo run --example layout
 
 ---
 
-## Technical Specs
-
-- **Language**: Rust 1.91+
-- **Target platform**: macOS (M1 Max with 32GB RAM)
-- **Terminal support**: iTerm2, Kitty, WezTerm, Alacritty
-- **Color support**: True color (24-bit RGB) with graceful fallbacks
-- **Test coverage**: 56 tests across all modules
-
----
-
 ## License
 
-MIT OR Apache-2.0
+MIT
