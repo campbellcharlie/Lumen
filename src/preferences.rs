@@ -51,14 +51,12 @@ impl Preferences {
             Some(path) => {
                 if path.exists() {
                     match fs::read_to_string(&path) {
-                        Ok(contents) => {
-                            match serde_yaml::from_str(&contents) {
-                                Ok(prefs) => return prefs,
-                                Err(e) => {
-                                    eprintln!("Warning: Failed to parse preferences: {}", e);
-                                }
+                        Ok(contents) => match serde_yaml::from_str(&contents) {
+                            Ok(prefs) => return prefs,
+                            Err(e) => {
+                                eprintln!("Warning: Failed to parse preferences: {}", e);
                             }
-                        }
+                        },
                         Err(e) => {
                             eprintln!("Warning: Failed to read preferences: {}", e);
                         }
@@ -76,8 +74,12 @@ impl Preferences {
 
     /// Save preferences to disk
     pub fn save(&self) -> io::Result<()> {
-        let config_dir = Self::config_dir()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Could not determine home directory"))?;
+        let config_dir = Self::config_dir().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Could not determine home directory",
+            )
+        })?;
 
         // Create .lumen directory if it doesn't exist
         if !config_dir.exists() {
@@ -85,8 +87,12 @@ impl Preferences {
         }
 
         let config_path = config_dir.join("config.yaml");
-        let yaml = serde_yaml::to_string(self)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Failed to serialize preferences: {}", e)))?;
+        let yaml = serde_yaml::to_string(self).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to serialize preferences: {}", e),
+            )
+        })?;
 
         fs::write(&config_path, yaml)?;
         Ok(())
@@ -101,8 +107,8 @@ mod tests {
     fn test_default_preferences() {
         let prefs = Preferences::default();
         assert_eq!(prefs.theme, "docs");
-        assert_eq!(prefs.mouse_enabled, false);
-        assert_eq!(prefs.file_sidebar_visible, true);
+        assert!(!prefs.mouse_enabled);
+        assert!(prefs.file_sidebar_visible);
     }
 
     #[test]
@@ -117,7 +123,7 @@ mod tests {
         let deserialized: Preferences = serde_yaml::from_str(&yaml).unwrap();
 
         assert_eq!(deserialized.theme, "dracula");
-        assert_eq!(deserialized.mouse_enabled, true);
-        assert_eq!(deserialized.file_sidebar_visible, false);
+        assert!(deserialized.mouse_enabled);
+        assert!(!deserialized.file_sidebar_visible);
     }
 }

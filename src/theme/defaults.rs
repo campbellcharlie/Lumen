@@ -130,7 +130,7 @@ pub fn docs_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: Some(Color::rgb(200, 200, 255)),
-                background: Some(Color::rgb(40, 40, 60)),  // Subtle blue-tinted band
+                background: Some(Color::rgb(40, 40, 60)), // Subtle blue-tinted band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
@@ -272,7 +272,7 @@ pub fn neon_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: Some(Color::rgb(255, 200, 255)),
-                background: Some(Color::rgb(60, 40, 60)),  // Subtle magenta-tinted band
+                background: Some(Color::rgb(60, 40, 60)), // Subtle magenta-tinted band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
@@ -407,7 +407,7 @@ pub fn minimal_theme() -> Theme {
             },
             emphasis: TextStyle {
                 foreground: None,
-                background: Some(Color::Ansi256(236)),  // Subtle gray band
+                background: Some(Color::Ansi256(236)), // Subtle gray band
                 weight: FontWeight::Normal,
                 style: FontStyle::Italic,
             },
@@ -497,7 +497,12 @@ pub fn dracula_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Rounded,
                     color: Some(Color::rgb(98, 114, 164)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -633,7 +638,12 @@ pub fn monokai_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Single,
                     color: Some(Color::rgb(117, 113, 94)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -769,7 +779,12 @@ pub fn solarized_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Single,
                     color: Some(Color::rgb(88, 110, 117)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -905,7 +920,12 @@ pub fn gruvbox_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Rounded,
                     color: Some(Color::rgb(146, 131, 116)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -1041,7 +1061,12 @@ pub fn nord_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Rounded,
                     color: Some(Color::rgb(76, 86, 106)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -1177,7 +1202,12 @@ pub fn tokyo_night_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Rounded,
                     color: Some(Color::rgb(86, 95, 137)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,
@@ -1313,7 +1343,12 @@ pub fn catppuccin_theme() -> Theme {
                 border: Some(BorderConfig {
                     style: BorderStyle::Rounded,
                     color: Some(Color::rgb(108, 112, 134)),
-                    sides: vec![BorderSide::Top, BorderSide::Right, BorderSide::Bottom, BorderSide::Left],
+                    sides: vec![
+                        BorderSide::Top,
+                        BorderSide::Right,
+                        BorderSide::Bottom,
+                        BorderSide::Left,
+                    ],
                 }),
                 padding: (1, 2),
                 show_language_badge: true,

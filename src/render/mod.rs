@@ -1,8 +1,8 @@
 //! Terminal rendering
 
-use crate::layout::{LayoutElement, LayoutNode, LayoutTree, TextSegment, Line, ImageReference};
-use crate::theme::{BorderStyle, Color, FontStyle, FontWeight, Theme};
+use crate::layout::{ImageReference, LayoutElement, LayoutNode, LayoutTree, Line, TextSegment};
 use crate::search::SearchState;
+use crate::theme::{BorderStyle, Color, FontStyle, FontWeight, Theme};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -12,8 +12,8 @@ use ratatui::{
     Terminal as RatatuiTerminal,
 };
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
-use std::io;
 use std::fs;
+use std::io;
 use std::path::Path;
 
 pub type Terminal = RatatuiTerminal<CrosstermBackend<io::Stdout>>;
@@ -43,7 +43,52 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
     Ok(())
 }
 
-/// Render layout tree to terminal
+/// Render a layout tree to the terminal with all UI elements.
+///
+/// This is the main rendering function that draws the entire UI including:
+/// - The document content with syntax highlighting
+/// - File sidebar (if enabled)
+/// - Image sidebar (if images are present)
+/// - Search results highlighting
+/// - Help menu overlay (if shown)
+/// - Status bar with navigation info
+///
+/// # Arguments
+///
+/// * `terminal` - The ratatui terminal instance to draw to
+/// * `tree` - Positioned layout tree from `layout_document`
+/// * `theme` - Theme for colors, borders, and styling
+/// * `show_help` - Whether to show the help menu overlay
+/// * `search_state` - Current search state (query, matches, selection)
+/// * `file_manager` - File manager with open files
+/// * `show_file_sidebar` - Whether to show the file navigation sidebar
+/// * `file_jump_mode` - Whether file jump mode is active (entering file number)
+/// * `file_jump_buffer` - Buffer containing the file number being entered
+///
+/// # Returns
+///
+/// `Ok(())` on successful render, or an I/O error if drawing fails.
+///
+/// # Example
+///
+/// ```no_run
+/// use lumen::render::{init_terminal, render};
+/// use lumen::{parse_markdown, layout_document, Theme, FileManager};
+/// use lumen::layout::Viewport;
+/// use lumen::search::SearchState;
+///
+/// let mut terminal = init_terminal().unwrap();
+/// let markdown = "# Hello";
+/// let doc = parse_markdown(markdown);
+/// let theme = Theme::builtin("docs").unwrap();
+/// let viewport = Viewport::new(80, 24);
+/// let tree = layout_document(&doc, &theme, viewport, false);
+/// let mut file_manager = FileManager::new();
+/// let search_state = SearchState::new();
+///
+/// render(&mut terminal, &tree, &theme, false, &search_state,
+///        &file_manager, false, false, "").unwrap();
+/// ```
 pub fn render(
     terminal: &mut Terminal,
     tree: &LayoutTree,
@@ -63,8 +108,8 @@ pub fn render(
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(20),  // File sidebar
-                    Constraint::Percentage(80),  // Content + images
+                    Constraint::Percentage(20), // File sidebar
+                    Constraint::Percentage(80), // Content + images
                 ])
                 .split(area);
             (Some(chunks[0]), chunks[1])
@@ -77,8 +122,8 @@ pub fn render(
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(70),  // Main content (of remaining area)
-                    Constraint::Percentage(30),  // Image sidebar
+                    Constraint::Percentage(70), // Main content (of remaining area)
+                    Constraint::Percentage(30), // Image sidebar
                 ])
                 .split(remaining_area);
             (chunks[0], Some(chunks[1]))
@@ -93,7 +138,15 @@ pub fn render(
         let content_x_offset = content_area.x;
 
         for node in &tree.root.children {
-            render_node(frame, node, theme, scroll_y, content_area, search_state, content_x_offset);
+            render_node(
+                frame,
+                node,
+                theme,
+                scroll_y,
+                content_area,
+                search_state,
+                content_x_offset,
+            );
         }
 
         // Render file sidebar if present
@@ -107,7 +160,14 @@ pub fn render(
         }
 
         // Render status bar (use full area width)
-        render_status_bar(frame, tree, area, search_state, file_jump_mode, file_jump_buffer);
+        render_status_bar(
+            frame,
+            tree,
+            area,
+            search_state,
+            file_jump_mode,
+            file_jump_buffer,
+        );
 
         // Render help menu if active
         if show_help {
@@ -159,14 +219,35 @@ fn render_node(
             render_heading(frame, node, *level, text, theme, display_y, area, x_offset);
         }
         LayoutElement::Paragraph { lines } => {
-            render_paragraph(frame, lines, theme, node.rect.x + x_offset, display_y, area, node.rect.y, scroll_y, search_state);
+            render_paragraph(
+                frame,
+                lines,
+                theme,
+                node.rect.x + x_offset,
+                display_y,
+                area,
+                node.rect.y,
+                scroll_y,
+                search_state,
+            );
             // Render children (e.g., inline images)
             for child in &node.children {
                 render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::CodeBlock { lang, lines } => {
-            render_code_block(frame, lang, lines, theme, node.rect.x + x_offset, display_y, node.rect.width, area, node.rect.y, scroll_y);
+            render_code_block(
+                frame,
+                lang,
+                lines,
+                theme,
+                node.rect.x + x_offset,
+                display_y,
+                node.rect.width,
+                area,
+                node.rect.y,
+                scroll_y,
+            );
         }
         LayoutElement::List { .. } => {
             for child in &node.children {
@@ -175,22 +256,38 @@ fn render_node(
         }
         LayoutElement::ListItem { marker, .. } => {
             // Render marker with style
-            let marker_style = Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
+            let marker_style =
+                Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
 
             // Calculate display width (not byte length)
             // The bullet "•" is 3 bytes but displays as 1 char width
             let marker_display_width = marker.chars().count() as u16;
 
+            // Calculate allocated marker space based on where the content starts
+            // This allows us to right-align the marker for consistent alignment
+            let allocated_marker_space = if let Some(first_child) = node.children.first() {
+                // Content starts at first_child.rect.x, with 1-space gap after marker
+                first_child.rect.x.saturating_sub(node.rect.x).saturating_sub(1)
+            } else {
+                marker_display_width
+            };
+
+            // Right-align the marker within the allocated space
+            let marker_x_offset = allocated_marker_space.saturating_sub(marker_display_width);
+
             let marker_area = ratatui::layout::Rect {
-                x: node.rect.x + x_offset,
+                x: node.rect.x + x_offset + marker_x_offset,
                 y: display_y,
                 width: marker_display_width,
                 height: 1,
             };
 
             frame.render_widget(
-                Paragraph::new(RatatuiText::from(Span::styled(marker.as_str(), marker_style))),
-                marker_area
+                Paragraph::new(RatatuiText::from(Span::styled(
+                    marker.as_str(),
+                    marker_style,
+                ))),
+                marker_area,
             );
 
             // Render children - they are positioned by the layout
@@ -233,7 +330,7 @@ fn render_node(
 
             // Calculate visible portion of callout
             let visible_start_y = if node.rect.y < scroll_y {
-                0  // Callout starts above viewport
+                0 // Callout starts above viewport
             } else {
                 display_y
             };
@@ -241,7 +338,10 @@ fn render_node(
             let visible_height = if node.rect.y < scroll_y {
                 // Callout extends above viewport, calculate visible portion
                 let hidden_lines = scroll_y - node.rect.y;
-                node.rect.height.saturating_sub(hidden_lines).min(area.height)
+                node.rect
+                    .height
+                    .saturating_sub(hidden_lines)
+                    .min(area.height)
             } else {
                 // Callout starts in viewport
                 node.rect.height.min(area.height.saturating_sub(display_y))
@@ -280,7 +380,7 @@ fn render_node(
             if node.rect.y >= scroll_y {
                 let icon_span = Span::styled(
                     &callout_style.icon,
-                    Style::default().fg(to_ratatui_color(callout_style.color))
+                    Style::default().fg(to_ratatui_color(callout_style.color)),
                 );
                 let icon_area = ratatui::layout::Rect {
                     x: node.rect.x + x_offset,
@@ -304,7 +404,11 @@ fn render_node(
             // Get column positions from first row (adjusted for offset)
             let column_positions: Vec<u16> = if let Some(first_row) = node.children.first() {
                 if let LayoutElement::TableRow { .. } = first_row.element {
-                    first_row.children.iter().map(|cell| cell.rect.x + x_offset).collect()
+                    first_row
+                        .children
+                        .iter()
+                        .map(|cell| cell.rect.x + x_offset)
+                        .collect()
                 } else {
                     vec![]
                 }
@@ -324,7 +428,10 @@ fn render_node(
                 let is_last_row = i == node.children.len() - 1;
                 let draw_separator = is_last_row || theme.blocks.table.row_separator;
 
-                if draw_separator && row_bottom_y >= scroll_y && row_bottom_y < scroll_y + area.height {
+                if draw_separator
+                    && row_bottom_y >= scroll_y
+                    && row_bottom_y < scroll_y + area.height
+                {
                     let sep_display_y = row_bottom_y - scroll_y;
 
                     if sep_display_y < area.height {
@@ -338,19 +445,23 @@ fn render_node(
 
                             // For each column position, add segment and T-up junction
                             for i in 0..column_positions.len() {
-                                let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                                let start_x = if i == 0 {
+                                    table_left
+                                } else {
+                                    column_positions[i - 1]
+                                };
                                 let end_x = column_positions[i];
-                                let segment_width = (end_x - start_x - 1).max(0) as usize;
+                                let segment_width = (end_x - start_x - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
                                 sep_line.push_str(border_chars.t_up);
                             }
 
                             // Final segment to right edge (minus 1 for corner)
                             if let Some(&last_col) = column_positions.last() {
-                                let final_width = (table_right - last_col - 1).max(0) as usize;
+                                let final_width = (table_right - last_col - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(final_width));
                             } else {
-                                let full_width = (table_right - table_left - 1).max(0) as usize;
+                                let full_width = (table_right - table_left - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(full_width));
                             }
 
@@ -361,19 +472,23 @@ fn render_node(
 
                             // For each column position, add segment and cross junction
                             for i in 0..column_positions.len() {
-                                let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                                let start_x = if i == 0 {
+                                    table_left
+                                } else {
+                                    column_positions[i - 1]
+                                };
                                 let end_x = column_positions[i];
-                                let segment_width = (end_x - start_x - 1).max(0) as usize;
+                                let segment_width = (end_x - start_x - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
                                 sep_line.push_str(border_chars.cross);
                             }
 
                             // Final segment to right edge (minus 1 for t_left junction)
                             if let Some(&last_col) = column_positions.last() {
-                                let final_width = (table_right - last_col - 1).max(0) as usize;
+                                let final_width = (table_right - last_col - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(final_width));
                             } else {
-                                let full_width = (table_right - table_left - 1).max(0) as usize;
+                                let full_width = (table_right - table_left - 1) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(full_width));
                             }
 
@@ -383,12 +498,12 @@ fn render_node(
                         let sep_area = ratatui::layout::Rect {
                             x: table_left,
                             y: sep_display_y,
-                            width: (table_right - table_left + 1) as u16, // Full table width
+                            width: (table_right - table_left + 1), // Full table width
                             height: 1,
                         };
                         frame.render_widget(
                             Paragraph::new(RatatuiText::from(Span::styled(sep_line, border_style))),
-                            sep_area
+                            sep_area,
                         );
                     }
                 }
@@ -406,20 +521,24 @@ fn render_node(
 
                 // For each adjacent pair of column positions, add horizontal segment and T-junction
                 for i in 0..column_positions.len() {
-                    let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                    let start_x = if i == 0 {
+                        table_left
+                    } else {
+                        column_positions[i - 1]
+                    };
                     let end_x = column_positions[i];
-                    let segment_width = (end_x - start_x - 1).max(0) as usize;
+                    let segment_width = (end_x - start_x - 1) as usize;
                     top_line.push_str(&border_chars.horizontal.repeat(segment_width));
                     top_line.push_str(border_chars.t_down);
                 }
 
                 // Add final segment from last column to right edge (minus 1 for corner)
                 if let Some(&last_col) = column_positions.last() {
-                    let final_width = (table_right - last_col - 1).max(0) as usize;
+                    let final_width = (table_right - last_col - 1) as usize;
                     top_line.push_str(&border_chars.horizontal.repeat(final_width));
                 } else {
                     // No columns, just fill the space (minus 2 for both corners)
-                    let full_width = (table_right - table_left - 1).max(0) as usize;
+                    let full_width = (table_right - table_left - 1) as usize;
                     top_line.push_str(&border_chars.horizontal.repeat(full_width));
                 }
 
@@ -429,12 +548,12 @@ fn render_node(
                 let top_area = ratatui::layout::Rect {
                     x: table_left,
                     y: display_y,
-                    width: (table_right - table_left + 1) as u16, // Full table width
+                    width: (table_right - table_left + 1), // Full table width
                     height: 1,
                 };
                 frame.render_widget(
                     Paragraph::new(RatatuiText::from(Span::styled(top_line, border_style))),
-                    top_area
+                    top_area,
                 );
             }
         }
@@ -449,7 +568,11 @@ fn render_node(
             }
 
             // Collect column X positions (adjusted for offset)
-            let column_positions: Vec<u16> = node.children.iter().map(|cell| cell.rect.x + x_offset).collect();
+            let column_positions: Vec<u16> = node
+                .children
+                .iter()
+                .map(|cell| cell.rect.x + x_offset)
+                .collect();
             let table_right = if let Some(last_cell) = node.children.last() {
                 last_cell.rect.x + x_offset + last_cell.rect.width - 1
             } else {
@@ -473,8 +596,11 @@ fn render_node(
                             height: 1,
                         };
                         frame.render_widget(
-                            Paragraph::new(RatatuiText::from(Span::styled(border_chars.vertical, border_style))),
-                            border_area
+                            Paragraph::new(RatatuiText::from(Span::styled(
+                                border_chars.vertical,
+                                border_style,
+                            ))),
+                            border_area,
                         );
                     }
 
@@ -486,8 +612,11 @@ fn render_node(
                         height: 1,
                     };
                     frame.render_widget(
-                        Paragraph::new(RatatuiText::from(Span::styled(border_chars.vertical, border_style))),
-                        right_border_area
+                        Paragraph::new(RatatuiText::from(Span::styled(
+                            border_chars.vertical,
+                            border_style,
+                        ))),
+                        right_border_area,
                     );
                 }
             }
@@ -516,7 +645,16 @@ fn render_node(
         }
         LayoutElement::Image { path, alt_text } => {
             // Render inline image
-            render_inline_image(frame, path, alt_text, node.rect.x + x_offset, display_y, node.rect.width, node.rect.height, area);
+            render_inline_image(
+                frame,
+                path,
+                alt_text,
+                node.rect.x + x_offset,
+                display_y,
+                node.rect.width,
+                node.rect.height,
+                area,
+            );
         }
         _ => {
             // Render children for other types
@@ -599,16 +737,19 @@ fn render_paragraph(
         }
 
         // Get search matches for this line
-        let line_matches: Vec<&crate::search::SearchMatch> = search_state.matches
+        let line_matches: Vec<&crate::search::SearchMatch> = search_state
+            .matches
             .iter()
             .filter(|m| m.y == line_y_in_doc)
             .collect();
 
         // If no matches on this line, render normally
         if line_matches.is_empty() {
-            spans.extend(line.segments.iter().map(|seg| {
-                text_segment_to_span(seg, theme)
-            }));
+            spans.extend(
+                line.segments
+                    .iter()
+                    .map(|seg| text_segment_to_span(seg, theme)),
+            );
         } else {
             // Render with highlighting
             let mut current_x = x;
@@ -623,25 +764,35 @@ fn render_paragraph(
                     // Check if this match overlaps with this segment
                     if match_start < seg_end && match_end > current_x {
                         let overlap_start = match_start.saturating_sub(current_x) as usize;
-                        let overlap_end = (match_end.saturating_sub(current_x) as usize).min(seg.text.len());
+                        let overlap_end =
+                            (match_end.saturating_sub(current_x) as usize).min(seg.text.len());
 
                         // Add text before the match
                         if overlap_start > last_pos {
                             let before_text = &seg.text[last_pos..overlap_start];
-                            spans.push(Span::styled(before_text.to_string(), segment_to_style(seg, theme)));
+                            spans.push(Span::styled(
+                                before_text.to_string(),
+                                segment_to_style(seg, theme),
+                            ));
                         }
 
                         // Add highlighted match
                         if overlap_end > overlap_start {
                             let match_text = &seg.text[overlap_start..overlap_end];
-                            let is_current = search_state.current_index
+                            let is_current = search_state
+                                .current_index
                                 .map(|idx| search_state.matches[idx] == **match_ref)
                                 .unwrap_or(false);
 
                             let highlight_style = if is_current {
-                                Style::default().bg(RatatuiColor::Yellow).fg(RatatuiColor::Black).add_modifier(Modifier::BOLD)
+                                Style::default()
+                                    .bg(RatatuiColor::Yellow)
+                                    .fg(RatatuiColor::Black)
+                                    .add_modifier(Modifier::BOLD)
                             } else {
-                                Style::default().bg(RatatuiColor::DarkGray).fg(RatatuiColor::White)
+                                Style::default()
+                                    .bg(RatatuiColor::DarkGray)
+                                    .fg(RatatuiColor::White)
                             };
 
                             spans.push(Span::styled(match_text.to_string(), highlight_style));
@@ -653,7 +804,10 @@ fn render_paragraph(
                 // Add remaining text after all matches
                 if last_pos < seg.text.len() {
                     let after_text = &seg.text[last_pos..];
-                    spans.push(Span::styled(after_text.to_string(), segment_to_style(seg, theme)));
+                    spans.push(Span::styled(
+                        after_text.to_string(),
+                        segment_to_style(seg, theme),
+                    ));
                 }
 
                 current_x = seg_end;
@@ -676,8 +830,11 @@ fn render_paragraph(
 
 /// Convert a text segment to a style (without the text)
 fn segment_to_style(seg: &TextSegment, theme: &Theme) -> Style {
-    let base = Style::default()
-        .fg(seg.style.foreground.map(to_ratatui_color).unwrap_or(to_ratatui_color(theme.colors.foreground)));
+    let base = Style::default().fg(seg
+        .style
+        .foreground
+        .map(to_ratatui_color)
+        .unwrap_or(to_ratatui_color(theme.colors.foreground)));
 
     let base = if let Some(bg) = seg.style.background {
         base.bg(to_ratatui_color(bg))
@@ -714,7 +871,9 @@ fn render_code_block(
         .bg(to_ratatui_color(code_style.background));
 
     let border_fg = to_ratatui_color(code_style.foreground);
-    let border_style = Style::default().fg(border_fg).bg(to_ratatui_color(code_style.background));
+    let border_style = Style::default()
+        .fg(border_fg)
+        .bg(to_ratatui_color(code_style.background));
 
     // Constrain width to available area (important when sidebar is present)
     let actual_width = width.min(area.width.saturating_sub(x));
@@ -729,7 +888,12 @@ fn render_code_block(
         let top_border = format!("┌{}┐", "─".repeat(actual_width.saturating_sub(2) as usize));
         frame.render_widget(
             Paragraph::new(RatatuiText::from(Span::styled(top_border, border_style))),
-            ratatui::layout::Rect { x, y: top_y, width: actual_width, height: 1 }
+            ratatui::layout::Rect {
+                x,
+                y: top_y,
+                width: actual_width,
+                height: 1,
+            },
         );
     }
 
@@ -742,12 +906,22 @@ fn render_code_block(
             // Left border
             frame.render_widget(
                 Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
-                ratatui::layout::Rect { x, y: display_line_y, width: 1, height: 1 }
+                ratatui::layout::Rect {
+                    x,
+                    y: display_line_y,
+                    width: 1,
+                    height: 1,
+                },
             );
             // Right border
             frame.render_widget(
                 Paragraph::new(RatatuiText::from(Span::styled("│", border_style))),
-                ratatui::layout::Rect { x: x + actual_width - 1, y: display_line_y, width: 1, height: 1 }
+                ratatui::layout::Rect {
+                    x: x + actual_width - 1,
+                    y: display_line_y,
+                    width: 1,
+                    height: 1,
+                },
             );
         }
     }
@@ -759,7 +933,12 @@ fn render_code_block(
         let bottom_border = format!("└{}┘", "─".repeat(actual_width.saturating_sub(2) as usize));
         frame.render_widget(
             Paragraph::new(RatatuiText::from(Span::styled(bottom_border, border_style))),
-            ratatui::layout::Rect { x, y: display_bottom_y, width: actual_width, height: 1 }
+            ratatui::layout::Rect {
+                x,
+                y: display_bottom_y,
+                width: actual_width,
+                height: 1,
+            },
         );
     }
 
@@ -769,7 +948,7 @@ fn render_code_block(
             let badge = format!(" {} ", lang_name);
             let badge_span = Span::styled(
                 badge,
-                Style::default().fg(to_ratatui_color(theme.colors.accent))
+                Style::default().fg(to_ratatui_color(theme.colors.accent)),
             );
             let badge_text = RatatuiText::from(badge_span);
 
@@ -796,7 +975,7 @@ fn render_code_block(
     };
 
     // Render code lines
-    for i in start_line..lines.len() {
+    for (i, line) in lines.iter().enumerate().skip(start_line) {
         let line_y_in_doc = content_start_y + i as u16;
 
         // Skip if line is above viewport
@@ -813,7 +992,7 @@ fn render_code_block(
 
         // Pad line with spaces to fill the full width so background extends across
         let content_width = actual_width.saturating_sub(2) as usize;
-        let padded_line = format!("{:width$}", &lines[i], width = content_width);
+        let padded_line = format!("{:width$}", line, width = content_width);
 
         let span = Span::styled(padded_line, style);
         let line_text = RatatuiText::from(span);
@@ -850,7 +1029,7 @@ fn render_status_bar(
             format!("{} (Enter file number)", prompt_text),
             Style::default()
                 .bg(RatatuiColor::Blue)
-                .fg(RatatuiColor::White)
+                .fg(RatatuiColor::White),
         );
 
         let prompt_bar_area = ratatui::layout::Rect {
@@ -886,7 +1065,7 @@ fn render_status_bar(
             full_text,
             Style::default()
                 .bg(RatatuiColor::Yellow)
-                .fg(RatatuiColor::Black)
+                .fg(RatatuiColor::Black),
         );
 
         let search_bar_area = ratatui::layout::Rect {
@@ -905,7 +1084,7 @@ fn render_status_bar(
     let scroll_y = tree.viewport.scroll_y;
 
     // Calculate visible line range
-    let top_line = scroll_y + 1;  // +1 for 1-based display
+    let top_line = scroll_y + 1; // +1 for 1-based display
     let bottom_line = (scroll_y + viewport_height).min(doc_height);
 
     // Calculate percentage through document
@@ -913,7 +1092,7 @@ fn render_status_bar(
     let percentage = if max_scroll > 0 {
         (scroll_y * 100) / max_scroll
     } else {
-        100  // If document fits in viewport, we're at 100%
+        100 // If document fits in viewport, we're at 100%
     };
 
     let status = if doc_height <= viewport_height {
@@ -946,13 +1125,16 @@ fn render_status_bar(
     let padding_len = area.width.saturating_sub(total_text_len as u16) as usize;
     let padding = " ".repeat(padding_len);
 
-    let full_status = format!("{}{}{}{}{}", status, position, search_info, padding, help_text);
+    let full_status = format!(
+        "{}{}{}{}{}",
+        status, position, search_info, padding, help_text
+    );
 
     let status_span = Span::styled(
         full_status,
         Style::default()
             .bg(RatatuiColor::DarkGray)
-            .fg(RatatuiColor::White)
+            .fg(RatatuiColor::White),
     );
     let status_text = RatatuiText::from(status_span);
 
@@ -1035,12 +1217,16 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
             if line.starts_with("LUMEN") {
                 ratatui::text::Line::from(Span::styled(
                     *line,
-                    Style::default().fg(RatatuiColor::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(RatatuiColor::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ))
             } else if line.ends_with(':') {
                 ratatui::text::Line::from(Span::styled(
                     *line,
-                    Style::default().fg(RatatuiColor::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(RatatuiColor::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 ))
             } else {
                 ratatui::text::Line::from(*line)
@@ -1048,9 +1234,11 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         })
         .collect();
 
-    let paragraph = Paragraph::new(text)
-        .block(block)
-        .style(Style::default().fg(RatatuiColor::White).bg(RatatuiColor::Black));
+    let paragraph = Paragraph::new(text).block(block).style(
+        Style::default()
+            .fg(RatatuiColor::White)
+            .bg(RatatuiColor::Black),
+    );
 
     // Clear the area first to prevent transparency
     frame.render_widget(Clear, help_area);
@@ -1068,14 +1256,12 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
         style = style.bg(to_ratatui_color(bg));
     }
 
-    match segment.style.weight {
-        FontWeight::Bold => style = style.add_modifier(Modifier::BOLD),
-        _ => {}
+    if segment.style.weight == FontWeight::Bold {
+        style = style.add_modifier(Modifier::BOLD)
     }
 
-    match segment.style.style {
-        FontStyle::Italic => style = style.add_modifier(Modifier::ITALIC),
-        _ => {}
+    if segment.style.style == FontStyle::Italic {
+        style = style.add_modifier(Modifier::ITALIC)
     }
 
     // NOTE: OSC 8 clickable links and iTerm2 inline images are DISABLED by default
@@ -1108,11 +1294,7 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
     // OSC 8 clickable links (experimental, disabled by default)
     if enable_links {
         if let Some(url) = &segment.link_url {
-            let wrapped_text = format!(
-                "\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\",
-                url,
-                segment.text
-            );
+            let wrapped_text = format!("\x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\", url, segment.text);
             return Span::styled(wrapped_text, style);
         }
     }
@@ -1145,7 +1327,7 @@ fn render_file_sidebar(
         " Open Files ",
         Style::default()
             .fg(RatatuiColor::Cyan)
-            .add_modifier(Modifier::BOLD)
+            .add_modifier(Modifier::BOLD),
     );
     let title_area = ratatui::layout::Rect {
         x: area.x,
@@ -1250,7 +1432,7 @@ fn render_image_sidebar(
             let image_height = 12u16.min(area.height.saturating_sub(actual_y));
 
             let image_area = ratatui::layout::Rect {
-                x: area.x + 2,  // Offset from border
+                x: area.x + 2, // Offset from border
                 y: area.y + actual_y,
                 width: max_width_chars,
                 height: image_height,
@@ -1273,7 +1455,7 @@ fn render_image_sidebar(
                     caption_text,
                     Style::default()
                         .fg(RatatuiColor::DarkGray)
-                        .add_modifier(Modifier::ITALIC)
+                        .add_modifier(Modifier::ITALIC),
                 );
                 let caption_area = ratatui::layout::Rect {
                     x: area.x + 2,
@@ -1281,7 +1463,10 @@ fn render_image_sidebar(
                     width: max_width_chars,
                     height: 1,
                 };
-                frame.render_widget(Paragraph::new(RatatuiText::from(caption_span)), caption_area);
+                frame.render_widget(
+                    Paragraph::new(RatatuiText::from(caption_span)),
+                    caption_area,
+                );
             }
 
             // Update next available position (image + caption + 1 line gap)
@@ -1329,11 +1514,7 @@ fn create_image_protocol(
     Ok(protocol)
 }
 
-fn render_image_fallback(
-    frame: &mut ratatui::Frame,
-    alt_text: &str,
-    area: ratatui::layout::Rect,
-) {
+fn render_image_fallback(frame: &mut ratatui::Frame, alt_text: &str, area: ratatui::layout::Rect) {
     let fallback_text = format!("[{}]", alt_text);
     let span = Span::styled(fallback_text, Style::default().fg(RatatuiColor::DarkGray));
     frame.render_widget(Paragraph::new(RatatuiText::from(span)), area);
@@ -1383,7 +1564,7 @@ fn render_inline_image(
                 caption_text,
                 Style::default()
                     .fg(RatatuiColor::DarkGray)
-                    .add_modifier(Modifier::ITALIC)
+                    .add_modifier(Modifier::ITALIC),
             );
             let caption_area = ratatui::layout::Rect {
                 x,
@@ -1391,7 +1572,10 @@ fn render_inline_image(
                 width,
                 height: 1,
             };
-            frame.render_widget(Paragraph::new(RatatuiText::from(caption_span)), caption_area);
+            frame.render_widget(
+                Paragraph::new(RatatuiText::from(caption_span)),
+                caption_area,
+            );
         }
     } else {
         // Image failed to load, show alt text

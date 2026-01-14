@@ -1,14 +1,21 @@
 //! Theme system integration tests
 
-use lumen::theme::{Theme, Color, BorderStyle};
+use lumen::theme::{BorderStyle, Color, Theme};
 
 #[test]
 fn test_builtin_themes_exist() {
     let names = Theme::builtin_names();
-    assert_eq!(names.len(), 3);
+    assert_eq!(names.len(), 10);
     assert!(names.contains(&"docs"));
     assert!(names.contains(&"neon"));
     assert!(names.contains(&"minimal"));
+    assert!(names.contains(&"dracula"));
+    assert!(names.contains(&"monokai"));
+    assert!(names.contains(&"solarized"));
+    assert!(names.contains(&"gruvbox"));
+    assert!(names.contains(&"nord"));
+    assert!(names.contains(&"tokyo-night"));
+    assert!(names.contains(&"catppuccin"));
 }
 
 #[test]
@@ -80,7 +87,9 @@ fn test_theme_from_yaml_file() {
         Err(_) => {
             // File might not exist if example wasn't run
             // This is acceptable in CI/CD environments
-            println!("Note: themes/docs.yaml not found. Run 'cargo run --example themes' to generate.");
+            println!(
+                "Note: themes/docs.yaml not found. Run 'cargo run --example themes' to generate."
+            );
         }
     }
 }

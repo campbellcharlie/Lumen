@@ -20,19 +20,19 @@
 //! - `search`: Search functionality
 //! - `preferences`: User preferences management
 
+pub mod file_manager;
 pub mod ir;
-pub mod parser;
-pub mod theme;
 pub mod layout;
+pub mod parser;
+pub mod preferences;
 pub mod render;
 pub mod search;
-pub mod file_manager;
-pub mod preferences;
+pub mod theme;
 
-pub use ir::Document;
-pub use parser::parse_markdown;
-pub use theme::Theme;
-pub use layout::{layout_document, LayoutTree};
-pub use search::SearchState;
 pub use file_manager::{FileManager, OpenFile};
+pub use ir::Document;
+pub use layout::{layout_document, LayoutTree};
+pub use parser::parse_markdown;
 pub use preferences::Preferences;
+pub use search::SearchState;
+pub use theme::Theme;

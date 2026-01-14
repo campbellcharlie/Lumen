@@ -10,7 +10,7 @@ pub type NodeId = usize;
 pub struct ImageReference {
     pub path: String,
     pub alt_text: String,
-    pub y_position: u16,  // Line number where the image reference appears
+    pub y_position: u16, // Line number where the image reference appears
 }
 
 /// Complete layout tree with viewport
@@ -19,7 +19,7 @@ pub struct LayoutTree {
     pub root: LayoutNode,
     pub viewport: Viewport,
     pub hit_regions: Vec<HitRegion>,
-    pub images: Vec<ImageReference>,  // Images to display in sidebar
+    pub images: Vec<ImageReference>, // Images to display in sidebar
 }
 
 /// A positioned and sized layout node
@@ -43,7 +43,12 @@ pub struct Rectangle {
 
 impl Rectangle {
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn contains(&self, x: u16, y: u16) -> bool {
@@ -105,6 +110,12 @@ pub struct Line {
     pub segments: Vec<TextSegment>,
 }
 
+impl Default for Line {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Line {
     pub fn new() -> Self {
         Self {
@@ -116,7 +127,12 @@ impl Line {
         self.add_segment_full(text, style, None, None, None);
     }
 
-    pub fn add_segment_with_link(&mut self, text: String, style: TextStyle, link_url: Option<String>) {
+    pub fn add_segment_with_link(
+        &mut self,
+        text: String,
+        style: TextStyle,
+        link_url: Option<String>,
+    ) {
         self.add_segment_full(text, style, link_url, None, None);
     }
 
@@ -152,8 +168,8 @@ pub struct TextSegment {
     pub text: String,
     pub style: TextStyle,
     pub link_url: Option<String>,  // For OSC 8 clickable links
-    pub image_url: Option<String>,  // For iTerm2 inline images
-    pub image_alt: Option<String>,  // Alt text for images
+    pub image_url: Option<String>, // For iTerm2 inline images
+    pub image_alt: Option<String>, // Alt text for images
 }
 
 /// Computed style for a layout node
@@ -250,10 +266,10 @@ impl Default for TextStyle {
 /// Viewport (terminal window)
 #[derive(Debug, Clone, Copy)]
 pub struct Viewport {
-    pub width: u16,      // Terminal width (columns)
-    pub height: u16,     // Terminal height (rows)
-    pub scroll_x: u16,   // Horizontal scroll offset
-    pub scroll_y: u16,   // Vertical scroll offset
+    pub width: u16,    // Terminal width (columns)
+    pub height: u16,   // Terminal height (rows)
+    pub scroll_x: u16, // Horizontal scroll offset
+    pub scroll_y: u16, // Vertical scroll offset
 }
 
 impl Viewport {

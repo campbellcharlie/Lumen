@@ -4,29 +4,52 @@ use super::types::{ImageReference, Line, TextStyle};
 use crate::ir::Inline;
 use crate::theme::{FontStyle, FontWeight, Theme};
 
+/// Context for laying out inline elements
+struct InlineLayoutContext<'a> {
+    current_line: &'a mut Line,
+    current_width: &'a mut u16,
+    max_width: u16,
+    lines: &'a mut Vec<Line>,
+    base_style: TextStyle,
+    link_url: Option<String>,
+    theme: &'a Theme,
+    y_offset: u16,
+    images: &'a mut Vec<ImageReference>,
+    inline_images_mode: bool,
+    inline_images: &'a mut Vec<(u16, String, String)>,
+}
+
 /// Layout inline elements into wrapped lines
 /// Returns (lines, inline_images) where inline_images contains images to be rendered inline
-pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme, y_offset: u16, images: &mut Vec<ImageReference>, inline_images_mode: bool) -> (Vec<Line>, Vec<(u16, String, String)>) {
+pub fn layout_text(
+    inlines: &[Inline],
+    max_width: u16,
+    theme: &Theme,
+    y_offset: u16,
+    images: &mut Vec<ImageReference>,
+    inline_images_mode: bool,
+) -> (Vec<Line>, Vec<(u16, String, String)>) {
     let mut lines = Vec::new();
     let mut current_line = Line::new();
     let mut current_width = 0u16;
     let mut inline_images = Vec::new(); // (line_index, path, alt_text)
 
+    let mut ctx = InlineLayoutContext {
+        current_line: &mut current_line,
+        current_width: &mut current_width,
+        max_width,
+        lines: &mut lines,
+        base_style: TextStyle::default(),
+        link_url: None,
+        theme,
+        y_offset,
+        images,
+        inline_images_mode,
+        inline_images: &mut inline_images,
+    };
+
     for inline in inlines {
-        layout_inline(
-            inline,
-            &mut current_line,
-            &mut current_width,
-            max_width,
-            &mut lines,
-            TextStyle::default(),
-            None,
-            theme,
-            y_offset,
-            images,
-            inline_images_mode,
-            &mut inline_images,
-        );
+        layout_inline(inline, &mut ctx);
     }
 
     // Push remaining line
@@ -42,177 +65,124 @@ pub fn layout_text(inlines: &[Inline], max_width: u16, theme: &Theme, y_offset: 
     (lines, inline_images)
 }
 
-fn layout_inline(
-    inline: &Inline,
-    current_line: &mut Line,
-    current_width: &mut u16,
-    max_width: u16,
-    lines: &mut Vec<Line>,
-    base_style: TextStyle,
-    link_url: Option<String>,
-    theme: &Theme,
-    y_offset: u16,
-    images: &mut Vec<ImageReference>,
-    inline_images_mode: bool,
-    inline_images: &mut Vec<(u16, String, String)>,
-) {
+fn layout_inline(inline: &Inline, ctx: &mut InlineLayoutContext) {
     match inline {
         Inline::Text(text) => {
             layout_text_content(
                 text,
-                current_line,
-                current_width,
-                max_width,
-                lines,
-                base_style,
-                link_url,
+                ctx.current_line,
+                ctx.current_width,
+                ctx.max_width,
+                ctx.lines,
+                ctx.base_style,
+                ctx.link_url.clone(),
             );
         }
         Inline::Strong(nested) => {
-            let style = TextStyle {
+            let old_style = ctx.base_style;
+            ctx.base_style = TextStyle {
                 weight: FontWeight::Bold,
-                ..base_style
+                ..old_style
             };
             for inner in nested {
-                layout_inline(
-                    inner,
-                    current_line,
-                    current_width,
-                    max_width,
-                    lines,
-                    style,
-                    link_url.clone(),
-                    theme,
-                    y_offset,
-                    images,
-                    inline_images_mode,
-                    inline_images,
-                );
+                layout_inline(inner, ctx);
             }
+            ctx.base_style = old_style;
         }
         Inline::Emphasis(nested) => {
-            let style = TextStyle {
+            let old_style = ctx.base_style;
+            ctx.base_style = TextStyle {
                 style: FontStyle::Italic,
-                ..base_style
+                ..old_style
             };
             for inner in nested {
-                layout_inline(
-                    inner,
-                    current_line,
-                    current_width,
-                    max_width,
-                    lines,
-                    style,
-                    link_url.clone(),
-                    theme,
-                    y_offset,
-                    images,
-                    inline_images_mode,
-                    inline_images,
-                );
+                layout_inline(inner, ctx);
             }
+            ctx.base_style = old_style;
         }
         Inline::Strikethrough(nested) => {
             // Use base style for now (strikethrough rendering in Phase 4)
             for inner in nested {
-                layout_inline(
-                    inner,
-                    current_line,
-                    current_width,
-                    max_width,
-                    lines,
-                    base_style,
-                    link_url.clone(),
-                    theme,
-                    y_offset,
-                    images,
-                    inline_images_mode,
-                    inline_images,
-                );
+                layout_inline(inner, ctx);
             }
         }
         Inline::Code(code) => {
             let style = TextStyle {
-                foreground: theme.inlines.code.foreground,
-                background: theme.inlines.code.background,
-                ..base_style
+                foreground: ctx.theme.inlines.code.foreground,
+                background: ctx.theme.inlines.code.background,
+                ..ctx.base_style
             };
             layout_text_content(
                 code,
-                current_line,
-                current_width,
-                max_width,
-                lines,
+                ctx.current_line,
+                ctx.current_width,
+                ctx.max_width,
+                ctx.lines,
                 style,
-                link_url,
+                ctx.link_url.clone(),
             );
         }
         Inline::Link { text, url, .. } => {
-            let style = TextStyle {
-                foreground: Some(theme.inlines.link.foreground),
-                ..base_style
+            let old_style = ctx.base_style;
+            let old_link = ctx.link_url.clone();
+            ctx.base_style = TextStyle {
+                foreground: Some(ctx.theme.inlines.link.foreground),
+                ..old_style
             };
+            ctx.link_url = Some(url.clone());
+
             // Pass the URL to nested content so it becomes clickable
             for inner in text {
-                layout_inline(
-                    inner,
-                    current_line,
-                    current_width,
-                    max_width,
-                    lines,
-                    style,
-                    Some(url.clone()),
-                    theme,
-                    y_offset,
-                    images,
-                    inline_images_mode,
-                    inline_images,
-                );
+                layout_inline(inner, ctx);
             }
+
+            ctx.base_style = old_style;
+            ctx.link_url = old_link;
 
             // Optionally show URL inline (but don't make it clickable)
             if matches!(
-                theme.inlines.link.show_url,
+                ctx.theme.inlines.link.show_url,
                 crate::theme::UrlDisplayMode::Inline
             ) {
                 let url_text = format!(" ({})", url);
                 layout_text_content(
                     &url_text,
-                    current_line,
-                    current_width,
-                    max_width,
-                    lines,
+                    ctx.current_line,
+                    ctx.current_width,
+                    ctx.max_width,
+                    ctx.lines,
                     TextStyle {
-                        foreground: Some(theme.colors.muted),
-                        ..base_style
+                        foreground: Some(ctx.theme.colors.muted),
+                        ..old_style
                     },
-                    None,  // Don't make the displayed URL itself clickable
+                    None, // Don't make the displayed URL itself clickable
                 );
             }
         }
         Inline::Image { url, alt, .. } => {
             // Calculate which line this image appears on (within this text block)
-            let line_number = lines.len() as u16;  // Current line being built
+            let line_number = ctx.lines.len() as u16; // Current line being built
 
-            if inline_images_mode {
+            if ctx.inline_images_mode {
                 // For inline images, collect them to be rendered as layout nodes
                 // Don't add placeholder text since the actual image will be rendered
-                inline_images.push((line_number, url.clone(), alt.clone()));
+                ctx.inline_images
+                    .push((line_number, url.clone(), alt.clone()));
             } else {
                 // For sidebar images, collect image reference and add placeholder text
-                images.push(ImageReference {
+                ctx.images.push(ImageReference {
                     path: url.clone(),
                     alt_text: alt.clone(),
-                    y_position: y_offset + line_number,  // Absolute position
+                    y_position: ctx.y_offset + line_number, // Absolute position
                 });
 
                 // Add placeholder text segment for sidebar mode
                 let image_text = format!("[IMAGE: {}]", alt);
                 let style = TextStyle {
-                    foreground: Some(theme.colors.muted),
-                    ..base_style
+                    foreground: Some(ctx.theme.colors.muted),
+                    ..ctx.base_style
                 };
-                current_line.add_segment_full(
+                ctx.current_line.add_segment_full(
                     image_text,
                     style,
                     None,
@@ -223,17 +193,17 @@ fn layout_inline(
         }
         Inline::LineBreak => {
             // Force new line
-            if !current_line.is_empty() {
-                lines.push(std::mem::replace(current_line, Line::new()));
-                *current_width = 0;
+            if !ctx.current_line.is_empty() {
+                ctx.lines.push(std::mem::take(ctx.current_line));
+                *ctx.current_width = 0;
             }
         }
         Inline::SoftBreak => {
             // In a terminal viewer, treat soft breaks as line breaks for better readability
             // This makes the rendered output match the source file more closely
-            if !current_line.is_empty() {
-                lines.push(std::mem::replace(current_line, Line::new()));
-                *current_width = 0;
+            if !ctx.current_line.is_empty() {
+                ctx.lines.push(std::mem::take(ctx.current_line));
+                *ctx.current_width = 0;
             }
         }
     }
@@ -259,7 +229,7 @@ fn layout_text_content(
         // Check if word fits on current line
         if *current_width + space_len + word_len > max_width && *current_width > 0 {
             // Wrap to next line
-            lines.push(std::mem::replace(current_line, Line::new()));
+            lines.push(std::mem::take(current_line));
             *current_width = 0;
         }
 
@@ -277,7 +247,7 @@ fn layout_text_content(
                 let chunk_len = (max_width - *current_width).min(remaining.len() as u16) as usize;
                 if chunk_len == 0 {
                     // Current line is full, wrap
-                    lines.push(std::mem::replace(current_line, Line::new()));
+                    lines.push(std::mem::take(current_line));
                     *current_width = 0;
                     continue;
                 }
@@ -289,7 +259,7 @@ fn layout_text_content(
 
                 if !remaining.is_empty() {
                     // More to go, wrap to next line
-                    lines.push(std::mem::replace(current_line, Line::new()));
+                    lines.push(std::mem::take(current_line));
                     *current_width = 0;
                 }
             }
@@ -333,7 +303,9 @@ mod tests {
     #[test]
     fn test_long_word_breaking() {
         let theme = theme::docs_theme();
-        let inlines = vec![Inline::Text("Supercalifragilisticexpialidocious".to_string())];
+        let inlines = vec![Inline::Text(
+            "Supercalifragilisticexpialidocious".to_string(),
+        )];
         let mut images = Vec::new();
 
         let (lines, _) = layout_text(&inlines, 10, &theme, 0, &mut images, false);

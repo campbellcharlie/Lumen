@@ -1,23 +1,29 @@
 //! Search functionality for finding text in documents
 
-use crate::layout::{LayoutNode, LayoutElement, Line};
+use crate::layout::{LayoutElement, LayoutNode, Line};
 
 /// Search match position in the document
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchMatch {
-    pub y: u16,           // Document y position
-    pub x: u16,           // X position in line
-    pub length: usize,    // Match length
-    pub text: String,     // Matched text (for context)
+    pub y: u16,        // Document y position
+    pub x: u16,        // X position in line
+    pub length: usize, // Match length
+    pub text: String,  // Matched text (for context)
 }
 
 /// Search state
 #[derive(Debug, Clone)]
 pub struct SearchState {
-    pub needle: String,           // Search query
-    pub matches: Vec<SearchMatch>, // All matches found
+    pub needle: String,               // Search query
+    pub matches: Vec<SearchMatch>,    // All matches found
     pub current_index: Option<usize>, // Currently selected match
-    pub active: bool,             // Whether search mode is active
+    pub active: bool,                 // Whether search mode is active
+}
+
+impl Default for SearchState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SearchState {
@@ -89,13 +95,11 @@ impl SearchState {
     pub fn prev_match(&mut self) {
         if let Some(current) = self.current_index {
             if !self.matches.is_empty() {
-                self.current_index = Some(
-                    if current == 0 {
-                        self.matches.len() - 1
-                    } else {
-                        current - 1
-                    }
-                );
+                self.current_index = Some(if current == 0 {
+                    self.matches.len() - 1
+                } else {
+                    current - 1
+                });
             }
         } else if !self.matches.is_empty() {
             self.current_index = Some(self.matches.len() - 1);
@@ -168,16 +172,30 @@ fn search_text(text: &str, needle: &str, x: u16, y: u16, matches: &mut Vec<Searc
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::{Rectangle, ComputedStyle};
 
     #[test]
     fn test_search_state_navigation() {
         let mut state = SearchState::new();
         state.needle = "test".to_string();
         state.matches = vec![
-            SearchMatch { y: 0, x: 0, length: 4, text: "test".to_string() },
-            SearchMatch { y: 5, x: 10, length: 4, text: "test".to_string() },
-            SearchMatch { y: 10, x: 20, length: 4, text: "test".to_string() },
+            SearchMatch {
+                y: 0,
+                x: 0,
+                length: 4,
+                text: "test".to_string(),
+            },
+            SearchMatch {
+                y: 5,
+                x: 10,
+                length: 4,
+                text: "test".to_string(),
+            },
+            SearchMatch {
+                y: 10,
+                x: 20,
+                length: 4,
+                text: "test".to_string(),
+            },
         ];
 
         state.current_index = Some(0);

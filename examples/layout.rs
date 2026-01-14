@@ -1,5 +1,5 @@
-use lumen::{parse_markdown, layout_document, Theme};
 use lumen::layout::Viewport;
+use lumen::{layout_document, parse_markdown, Theme};
 
 fn main() {
     println!("=== Lumen Layout Engine Demo ===\n");
@@ -43,7 +43,7 @@ End of document.
     let viewport = Viewport::new(80, 24);
 
     // Layout document
-    let tree = layout_document(&doc, &theme, viewport);
+    let tree = layout_document(&doc, &theme, viewport, false);
 
     println!("Document Layout:");
     println!("- Total height: {} rows", tree.document_height());

@@ -1,9 +1,9 @@
 //! Markdown to IR conversion using pulldown-cmark
 
-use crate::ir::{
-    Alignment, Block, CalloutKind, Document, Inline, ListItem, TableCell,
+use crate::ir::{Alignment, Block, CalloutKind, Document, Inline, ListItem, TableCell};
+use pulldown_cmark::{
+    Alignment as CMarkAlignment, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
 };
-use pulldown_cmark::{Alignment as CMarkAlignment, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 /// Parse a Markdown string into a Lumen Document
 pub fn parse_markdown(markdown: &str) -> Document {
@@ -31,12 +31,31 @@ struct MarkdownConverter {
 #[derive(Debug)]
 enum BlockContext {
     Paragraph,
-    Heading { level: u8 },
-    BlockQuote { blocks: Vec<Block> },
-    List { ordered: bool, start: usize, items: Vec<ListItem> },
-    ListItem { blocks: Vec<Block>, task: Option<bool> },
-    CodeBlock { lang: Option<String>, code: String },
-    Table { headers: Vec<TableCell>, rows: Vec<Vec<TableCell>>, current_row: Vec<TableCell>, alignment: Vec<Alignment> },
+    Heading {
+        level: u8,
+    },
+    BlockQuote {
+        blocks: Vec<Block>,
+    },
+    List {
+        ordered: bool,
+        start: usize,
+        items: Vec<ListItem>,
+    },
+    ListItem {
+        blocks: Vec<Block>,
+        task: Option<bool>,
+    },
+    CodeBlock {
+        lang: Option<String>,
+        code: String,
+    },
+    Table {
+        headers: Vec<TableCell>,
+        rows: Vec<Vec<TableCell>>,
+        current_row: Vec<TableCell>,
+        alignment: Vec<Alignment>,
+    },
     TableHead,
     TableRow,
     TableCell,
@@ -45,10 +64,20 @@ enum BlockContext {
 /// Context for nested inline elements
 #[derive(Debug)]
 enum InlineContext {
-    Strong { content: Vec<Inline> },
-    Emphasis { content: Vec<Inline> },
-    Strikethrough { content: Vec<Inline> },
-    Link { url: String, title: Option<String>, text: Vec<Inline> },
+    Strong {
+        content: Vec<Inline>,
+    },
+    Emphasis {
+        content: Vec<Inline>,
+    },
+    Strikethrough {
+        content: Vec<Inline>,
+    },
+    Link {
+        url: String,
+        title: Option<String>,
+        text: Vec<Inline>,
+    },
 }
 
 impl MarkdownConverter {
@@ -74,7 +103,10 @@ impl MarkdownConverter {
                 Event::Html(_) | Event::InlineHtml(_) => {
                     // Skip raw HTML for now (could support in future)
                 }
-                Event::FootnoteReference(_) | Event::TaskListMarker(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {
+                Event::FootnoteReference(_)
+                | Event::TaskListMarker(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_) => {
                     // Skip for now
                 }
             }
@@ -98,7 +130,8 @@ impl MarkdownConverter {
                 self.block_stack.push(BlockContext::Heading { level });
             }
             Tag::BlockQuote(_) => {
-                self.block_stack.push(BlockContext::BlockQuote { blocks: Vec::new() });
+                self.block_stack
+                    .push(BlockContext::BlockQuote { blocks: Vec::new() });
             }
             Tag::CodeBlock(kind) => {
                 let lang = match kind {
@@ -111,7 +144,10 @@ impl MarkdownConverter {
                     }
                     pulldown_cmark::CodeBlockKind::Indented => None,
                 };
-                self.block_stack.push(BlockContext::CodeBlock { lang, code: String::new() });
+                self.block_stack.push(BlockContext::CodeBlock {
+                    lang,
+                    code: String::new(),
+                });
             }
             Tag::List(start) => {
                 let (ordered, start_num) = match start {
@@ -125,7 +161,10 @@ impl MarkdownConverter {
                 });
             }
             Tag::Item => {
-                self.block_stack.push(BlockContext::ListItem { blocks: Vec::new(), task: None });
+                self.block_stack.push(BlockContext::ListItem {
+                    blocks: Vec::new(),
+                    task: None,
+                });
             }
             Tag::Table(alignments) => {
                 let alignment = alignments
@@ -155,28 +194,51 @@ impl MarkdownConverter {
             }
             Tag::Strong => {
                 let saved = std::mem::take(&mut self.current_inlines);
-                self.inline_stack.push(InlineContext::Strong { content: saved });
+                self.inline_stack
+                    .push(InlineContext::Strong { content: saved });
             }
             Tag::Emphasis => {
                 let saved = std::mem::take(&mut self.current_inlines);
-                self.inline_stack.push(InlineContext::Emphasis { content: saved });
+                self.inline_stack
+                    .push(InlineContext::Emphasis { content: saved });
             }
             Tag::Strikethrough => {
                 let saved = std::mem::take(&mut self.current_inlines);
-                self.inline_stack.push(InlineContext::Strikethrough { content: saved });
+                self.inline_stack
+                    .push(InlineContext::Strikethrough { content: saved });
             }
-            Tag::Link { dest_url, title, .. } => {
+            Tag::Link {
+                dest_url, title, ..
+            } => {
                 let url = dest_url.to_string();
-                let title = if title.is_empty() { None } else { Some(title.to_string()) };
+                let title = if title.is_empty() {
+                    None
+                } else {
+                    Some(title.to_string())
+                };
                 let saved = std::mem::take(&mut self.current_inlines);
-                self.inline_stack.push(InlineContext::Link { url, title, text: saved });
+                self.inline_stack.push(InlineContext::Link {
+                    url,
+                    title,
+                    text: saved,
+                });
             }
-            Tag::Image { dest_url, title, .. } => {
+            Tag::Image {
+                dest_url, title, ..
+            } => {
                 let url = dest_url.to_string();
-                let title = if title.is_empty() { None } else { Some(title.to_string()) };
+                let title = if title.is_empty() {
+                    None
+                } else {
+                    Some(title.to_string())
+                };
                 // Images are self-closing, we'll handle them in End event
                 let saved = std::mem::take(&mut self.current_inlines);
-                self.inline_stack.push(InlineContext::Link { url, title, text: saved }); // Temp use Link context
+                self.inline_stack.push(InlineContext::Link {
+                    url,
+                    title,
+                    text: saved,
+                }); // Temp use Link context
             }
             Tag::FootnoteDefinition(_) | Tag::HtmlBlock | Tag::MetadataBlock(_) => {
                 // Skip for now
@@ -219,8 +281,17 @@ impl MarkdownConverter {
                 }
             }
             TagEnd::List(_) => {
-                if let Some(BlockContext::List { ordered, start, items }) = self.block_stack.pop() {
-                    self.push_block(Block::List { ordered, start, items });
+                if let Some(BlockContext::List {
+                    ordered,
+                    start,
+                    items,
+                }) = self.block_stack.pop()
+                {
+                    self.push_block(Block::List {
+                        ordered,
+                        start,
+                        items,
+                    });
                 }
             }
             TagEnd::Item => {
@@ -232,18 +303,36 @@ impl MarkdownConverter {
 
                 if let Some(BlockContext::ListItem { blocks, task }) = self.block_stack.pop() {
                     if let Some(BlockContext::List { items, .. }) = self.block_stack.last_mut() {
-                        items.push(ListItem { content: blocks, task });
+                        items.push(ListItem {
+                            content: blocks,
+                            task,
+                        });
                     }
                 }
             }
             TagEnd::Table => {
-                if let Some(BlockContext::Table { headers, rows, alignment, .. }) = self.block_stack.pop() {
-                    self.push_block(Block::Table { headers, rows, alignment });
+                if let Some(BlockContext::Table {
+                    headers,
+                    rows,
+                    alignment,
+                    ..
+                }) = self.block_stack.pop()
+                {
+                    self.push_block(Block::Table {
+                        headers,
+                        rows,
+                        alignment,
+                    });
                 }
             }
             TagEnd::TableHead => {
                 if let Some(BlockContext::TableHead) = self.block_stack.pop() {
-                    if let Some(BlockContext::Table { current_row, headers, .. }) = self.block_stack.last_mut() {
+                    if let Some(BlockContext::Table {
+                        current_row,
+                        headers,
+                        ..
+                    }) = self.block_stack.last_mut()
+                    {
                         *headers = std::mem::take(current_row);
                     }
                 }
@@ -252,9 +341,15 @@ impl MarkdownConverter {
                 if let Some(BlockContext::TableRow) = self.block_stack.pop() {
                     // Check if we're inside TableHead - if so, don't add to rows yet
                     // TableHead will handle moving current_row to headers
-                    let in_table_head = self.block_stack.iter().any(|ctx| matches!(ctx, BlockContext::TableHead));
+                    let in_table_head = self
+                        .block_stack
+                        .iter()
+                        .any(|ctx| matches!(ctx, BlockContext::TableHead));
                     if !in_table_head {
-                        if let Some(BlockContext::Table { current_row, rows, .. }) = self.block_stack.last_mut() {
+                        if let Some(BlockContext::Table {
+                            current_row, rows, ..
+                        }) = self.block_stack.last_mut()
+                        {
                             rows.push(std::mem::take(current_row));
                         }
                     }
@@ -287,21 +382,36 @@ impl MarkdownConverter {
                 }
             }
             TagEnd::Strikethrough => {
-                if let Some(InlineContext::Strikethrough { mut content }) = self.inline_stack.pop() {
+                if let Some(InlineContext::Strikethrough { mut content }) = self.inline_stack.pop()
+                {
                     let nested = std::mem::take(&mut self.current_inlines);
                     content.push(Inline::Strikethrough(nested));
                     self.current_inlines = content;
                 }
             }
             TagEnd::Link => {
-                if let Some(InlineContext::Link { url, title, mut text }) = self.inline_stack.pop() {
+                if let Some(InlineContext::Link {
+                    url,
+                    title,
+                    mut text,
+                }) = self.inline_stack.pop()
+                {
                     let nested = std::mem::take(&mut self.current_inlines);
-                    text.push(Inline::Link { url, title, text: nested });
+                    text.push(Inline::Link {
+                        url,
+                        title,
+                        text: nested,
+                    });
                     self.current_inlines = text;
                 }
             }
             TagEnd::Image => {
-                if let Some(InlineContext::Link { url, title, mut text }) = self.inline_stack.pop() {
+                if let Some(InlineContext::Link {
+                    url,
+                    title,
+                    mut text,
+                }) = self.inline_stack.pop()
+                {
                     let nested = std::mem::take(&mut self.current_inlines);
                     let alt = nested.iter().map(|i| i.to_plain_text()).collect();
                     text.push(Inline::Image { url, alt, title });
@@ -311,7 +421,9 @@ impl MarkdownConverter {
             TagEnd::FootnoteDefinition | TagEnd::HtmlBlock | TagEnd::MetadataBlock(_) => {
                 // Skip for now
             }
-            TagEnd::DefinitionList | TagEnd::DefinitionListTitle | TagEnd::DefinitionListDefinition => {
+            TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition => {
                 // Skip definition lists for now
             }
         }
@@ -388,7 +500,7 @@ impl MarkdownConverter {
 
                         return Some(Block::Callout {
                             kind,
-                            title: None,  // Could extract from after [!TYPE] if desired
+                            title: None, // Could extract from after [!TYPE] if desired
                             content: remaining_blocks,
                         });
                     }

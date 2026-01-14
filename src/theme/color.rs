@@ -3,10 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Terminal color representation with fallback support
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Color {
     /// Reset to terminal default
+    #[default]
     Reset,
     /// True color (24-bit RGB)
     #[serde(rename = "rgb")]
@@ -17,12 +18,6 @@ pub enum Color {
     /// 16-color ANSI palette
     #[serde(rename = "ansi")]
     Ansi(AnsiColor),
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::Reset
-    }
 }
 
 /// Standard ANSI 16-color palette
@@ -149,11 +144,7 @@ impl Color {
             }
             Color::Ansi256(idx) => {
                 // Map 256-color to 16-color (simplified)
-                match idx {
-                    0..=7 => unsafe { std::mem::transmute(*idx) },
-                    8..=15 => unsafe { std::mem::transmute(*idx) },
-                    _ => AnsiColor::White,
-                }
+                AnsiColor::from_ansi256(*idx).unwrap_or(AnsiColor::White)
             }
             Color::Ansi(ansi) => *ansi,
         }
@@ -161,6 +152,7 @@ impl Color {
 }
 
 impl AnsiColor {
+    /// Convert ANSI color to its palette index (0-15)
     pub fn to_ansi256(&self) -> u8 {
         match self {
             AnsiColor::Black => 0,
@@ -179,6 +171,29 @@ impl AnsiColor {
             AnsiColor::BrightMagenta => 13,
             AnsiColor::BrightCyan => 14,
             AnsiColor::BrightWhite => 15,
+        }
+    }
+
+    /// Convert palette index (0-15) to ANSI color (safe alternative to transmute)
+    pub fn from_ansi256(idx: u8) -> Option<Self> {
+        match idx {
+            0 => Some(AnsiColor::Black),
+            1 => Some(AnsiColor::Red),
+            2 => Some(AnsiColor::Green),
+            3 => Some(AnsiColor::Yellow),
+            4 => Some(AnsiColor::Blue),
+            5 => Some(AnsiColor::Magenta),
+            6 => Some(AnsiColor::Cyan),
+            7 => Some(AnsiColor::White),
+            8 => Some(AnsiColor::BrightBlack),
+            9 => Some(AnsiColor::BrightRed),
+            10 => Some(AnsiColor::BrightGreen),
+            11 => Some(AnsiColor::BrightYellow),
+            12 => Some(AnsiColor::BrightBlue),
+            13 => Some(AnsiColor::BrightMagenta),
+            14 => Some(AnsiColor::BrightCyan),
+            15 => Some(AnsiColor::BrightWhite),
+            _ => None,
         }
     }
 }

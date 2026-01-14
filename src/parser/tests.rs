@@ -110,7 +110,11 @@ fn test_parse_ordered_list() {
 
     assert_eq!(doc.blocks.len(), 1);
     match &doc.blocks[0] {
-        Block::List { ordered, items, start } => {
+        Block::List {
+            ordered,
+            items,
+            start,
+        } => {
             assert!(ordered);
             assert_eq!(*start, 1);
             assert_eq!(items.len(), 3);
@@ -140,15 +144,13 @@ fn test_parse_image() {
 
     assert_eq!(doc.blocks.len(), 1);
     match &doc.blocks[0] {
-        Block::Paragraph { content } => {
-            match &content[0] {
-                Inline::Image { url, alt, .. } => {
-                    assert_eq!(url, "image.png");
-                    assert_eq!(alt, "Alt text");
-                }
-                _ => panic!("Expected Image inline"),
+        Block::Paragraph { content } => match &content[0] {
+            Inline::Image { url, alt, .. } => {
+                assert_eq!(url, "image.png");
+                assert_eq!(alt, "Alt text");
             }
-        }
+            _ => panic!("Expected Image inline"),
+        },
         _ => panic!("Expected Paragraph block"),
     }
 }
@@ -172,7 +174,10 @@ fn test_parse_horizontal_rule() {
     let markdown = "Text above\n\n---\n\nText below";
     let doc = parse_markdown(markdown);
 
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::HorizontalRule)));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::HorizontalRule)));
 }
 
 #[test]

@@ -1,16 +1,18 @@
 //! Layout engine for positioning document elements
 
-pub mod types;
-pub mod text;
 pub mod engine;
+pub mod text;
+pub mod types;
 
-pub use types::*;
 pub use engine::layout_document;
+pub use types::*;
 
 impl LayoutTree {
     /// Find hit region at given coordinates
     pub fn hit_test(&self, x: u16, y: u16) -> Option<&HitRegion> {
-        self.hit_regions.iter().find(|region| region.rect.contains(x, y))
+        self.hit_regions
+            .iter()
+            .find(|region| region.rect.contains(x, y))
     }
 
     /// Get total document height
@@ -40,12 +42,10 @@ mod tests {
         let theme = theme::docs_theme();
         let viewport = Viewport::new(80, 24);
 
-        let doc = Document::with_blocks(vec![
-            Block::Heading {
-                level: 1,
-                content: vec![Inline::Text("Title".to_string())],
-            },
-        ]);
+        let doc = Document::with_blocks(vec![Block::Heading {
+            level: 1,
+            content: vec![Inline::Text("Title".to_string())],
+        }]);
 
         let tree = layout_document(&doc, &theme, viewport, false);
 
@@ -72,10 +72,7 @@ mod tests {
         assert!(!tree.can_scroll_up());
 
         viewport.scroll_to(100);
-        let tree2 = LayoutTree {
-            viewport,
-            ..tree
-        };
+        let tree2 = LayoutTree { viewport, ..tree };
 
         assert!(tree2.can_scroll_up());
     }

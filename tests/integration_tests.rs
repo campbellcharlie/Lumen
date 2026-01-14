@@ -1,6 +1,6 @@
 //! Integration tests using test corpus
 
-use lumen::{parse_markdown, ir::Block};
+use lumen::{ir::Block, parse_markdown};
 use std::fs;
 
 fn load_fixture(name: &str) -> String {
@@ -14,10 +14,22 @@ fn test_basic_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have headings and paragraphs
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Heading { level: 1, .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Heading { level: 2, .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Heading { level: 6, .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Paragraph { .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Heading { level: 1, .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Heading { level: 2, .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Heading { level: 6, .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Paragraph { .. })));
 }
 
 #[test]
@@ -26,12 +38,14 @@ fn test_lists_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have both ordered and unordered lists
-    let has_unordered = doc.blocks.iter().any(|b| {
-        matches!(b, Block::List { ordered: false, .. })
-    });
-    let has_ordered = doc.blocks.iter().any(|b| {
-        matches!(b, Block::List { ordered: true, .. })
-    });
+    let has_unordered = doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::List { ordered: false, .. }));
+    let has_ordered = doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::List { ordered: true, .. }));
 
     assert!(has_unordered, "Should have unordered list");
     assert!(has_ordered, "Should have ordered list");
@@ -43,7 +57,9 @@ fn test_code_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have code blocks
-    let code_blocks: Vec<_> = doc.blocks.iter()
+    let code_blocks: Vec<_> = doc
+        .blocks
+        .iter()
         .filter_map(|b| match b {
             Block::CodeBlock { lang, code } => Some((lang, code)),
             _ => None,
@@ -53,9 +69,12 @@ fn test_code_markdown() {
     assert!(code_blocks.len() >= 2, "Should have at least 2 code blocks");
 
     // Check for rust code block
-    assert!(code_blocks.iter().any(|(lang, _)| {
-        lang.as_deref() == Some("rust")
-    }), "Should have rust code block");
+    assert!(
+        code_blocks
+            .iter()
+            .any(|(lang, _)| { lang.as_deref() == Some("rust") }),
+        "Should have rust code block"
+    );
 }
 
 #[test]
@@ -64,9 +83,15 @@ fn test_tables_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have tables
-    let tables: Vec<_> = doc.blocks.iter()
+    let tables: Vec<_> = doc
+        .blocks
+        .iter()
         .filter_map(|b| match b {
-            Block::Table { headers, rows, alignment } => Some((headers, rows, alignment)),
+            Block::Table {
+                headers,
+                rows,
+                alignment,
+            } => Some((headers, rows, alignment)),
             _ => None,
         })
         .collect();
@@ -94,9 +119,10 @@ fn test_blockquotes_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have blockquotes
-    let has_blockquote = doc.blocks.iter().any(|b| {
-        matches!(b, Block::BlockQuote { .. })
-    });
+    let has_blockquote = doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::BlockQuote { .. }));
 
     assert!(has_blockquote, "Should have blockquote");
 }
@@ -107,10 +133,22 @@ fn test_complex_markdown() {
     let doc = parse_markdown(&markdown);
 
     // Should have various block types
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Heading { .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::Paragraph { .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Heading { .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Paragraph { .. })));
     assert!(doc.blocks.iter().any(|b| matches!(b, Block::List { .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::CodeBlock { .. })));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::CodeBlock { .. })));
     assert!(doc.blocks.iter().any(|b| matches!(b, Block::Table { .. })));
-    assert!(doc.blocks.iter().any(|b| matches!(b, Block::HorizontalRule)));
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::HorizontalRule)));
 }

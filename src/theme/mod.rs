@@ -4,15 +4,15 @@
 //! Themes are declarative token sets that map element types to styles.
 
 pub mod color;
-pub mod types;
 pub mod defaults;
+pub mod types;
 
 pub use color::{AnsiColor, Color};
-pub use types::*;
 pub use defaults::{
-    docs_theme, neon_theme, minimal_theme, dracula_theme, monokai_theme,
-    solarized_theme, gruvbox_theme, nord_theme, tokyo_night_theme, catppuccin_theme
+    catppuccin_theme, docs_theme, dracula_theme, gruvbox_theme, minimal_theme, monokai_theme,
+    neon_theme, nord_theme, solarized_theme, tokyo_night_theme,
 };
+pub use types::*;
 
 use std::io;
 
@@ -26,7 +26,10 @@ impl Theme {
     pub fn from_file(path: &str) -> Result<Self, io::Error> {
         let contents = std::fs::read_to_string(path)?;
         Self::from_yaml(&contents).map_err(|e| {
-            io::Error::new(io::ErrorKind::InvalidData, format!("Failed to parse theme: {}", e))
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to parse theme: {}", e),
+            )
         })
     }
 

@@ -72,20 +72,15 @@ impl Default for Typography {
 }
 
 /// How to render emphasis (italic, bold, etc.)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum EmphasisStyle {
     /// Use terminal's native bold/italic
+    #[default]
     Native,
     /// Use color shifts
     ColorShift,
     /// Use background highlighting
     BackgroundBand,
-}
-
-impl Default for EmphasisStyle {
-    fn default() -> Self {
-        EmphasisStyle::Native
-    }
 }
 
 /// Spacing configuration (in lines/columns)
@@ -270,32 +265,32 @@ impl Default for CalloutStyles {
         Self {
             note: CalloutStyle {
                 icon: "ℹ".to_string(),
-                color: Color::Ansi256(39),  // Blue
-                background: Some(Color::Ansi256(17)),  // Dark blue bg
+                color: Color::Ansi256(39),            // Blue
+                background: Some(Color::Ansi256(17)), // Dark blue bg
                 border_color: Color::Ansi256(39),
             },
             warning: CalloutStyle {
                 icon: "⚠".to_string(),
-                color: Color::Ansi256(220),  // Yellow
-                background: Some(Color::Ansi256(58)),  // Dark yellow bg
+                color: Color::Ansi256(220),           // Yellow
+                background: Some(Color::Ansi256(58)), // Dark yellow bg
                 border_color: Color::Ansi256(220),
             },
             important: CalloutStyle {
                 icon: "❗".to_string(),
-                color: Color::Ansi256(201),  // Magenta
-                background: Some(Color::Ansi256(53)),  // Dark magenta bg
+                color: Color::Ansi256(201),           // Magenta
+                background: Some(Color::Ansi256(53)), // Dark magenta bg
                 border_color: Color::Ansi256(201),
             },
             tip: CalloutStyle {
                 icon: "💡".to_string(),
-                color: Color::Ansi256(42),  // Green
-                background: Some(Color::Ansi256(22)),  // Dark green bg
+                color: Color::Ansi256(42),            // Green
+                background: Some(Color::Ansi256(22)), // Dark green bg
                 border_color: Color::Ansi256(42),
             },
             caution: CalloutStyle {
                 icon: "🔥".to_string(),
-                color: Color::Ansi256(202),  // Orange/red
-                background: Some(Color::Ansi256(52)),  // Dark red bg
+                color: Color::Ansi256(202),           // Orange/red
+                background: Some(Color::Ansi256(52)), // Dark red bg
                 border_color: Color::Ansi256(202),
             },
         }
@@ -373,20 +368,15 @@ fn default_all_sides() -> Vec<BorderSide> {
 }
 
 /// Border drawing style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BorderStyle {
     None,
-    Single,  // ┌─┐ │ └─┘
+    #[default]
+    Single, // ┌─┐ │ └─┘
     Double,  // ╔═╗ ║ ╚═╝
     Rounded, // ╭─╮ │ ╰─╯
     Heavy,   // ┏━┓ ┃ ┗━┛
     Ascii,   // +--+ | +--+
-}
-
-impl Default for BorderStyle {
-    fn default() -> Self {
-        BorderStyle::Single
-    }
 }
 
 /// Which sides of a border to draw
@@ -435,29 +425,19 @@ impl Default for TextStyle {
 }
 
 /// Font weight
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FontWeight {
+    #[default]
     Normal,
     Bold,
 }
 
-impl Default for FontWeight {
-    fn default() -> Self {
-        FontWeight::Normal
-    }
-}
-
 /// Font style
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FontStyle {
+    #[default]
     Normal,
     Italic,
-}
-
-impl Default for FontStyle {
-    fn default() -> Self {
-        FontStyle::Normal
-    }
 }
 
 /// Link styling
@@ -471,15 +451,10 @@ pub struct LinkStyle {
 }
 
 /// How to display link URLs
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum UrlDisplayMode {
-    Inline,  // Show URL after text
-    Hover,   // Show on hover (if terminal supports)
-    Hidden,  // Don't show URL
-}
-
-impl Default for UrlDisplayMode {
-    fn default() -> Self {
-        UrlDisplayMode::Hover
-    }
+    Inline, // Show URL after text
+    #[default]
+    Hover, // Show on hover (if terminal supports)
+    Hidden, // Don't show URL
 }

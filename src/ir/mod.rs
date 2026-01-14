@@ -33,26 +33,16 @@ pub struct Metadata {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     /// Heading with level (1-6) and inline content
-    Heading {
-        level: u8,
-        content: Vec<Inline>,
-    },
+    Heading { level: u8, content: Vec<Inline> },
 
     /// Paragraph with inline content
-    Paragraph {
-        content: Vec<Inline>,
-    },
+    Paragraph { content: Vec<Inline> },
 
     /// Code block with optional language hint
-    CodeBlock {
-        lang: Option<String>,
-        code: String,
-    },
+    CodeBlock { lang: Option<String>, code: String },
 
     /// Block quote containing other blocks
-    BlockQuote {
-        blocks: Vec<Block>,
-    },
+    BlockQuote { blocks: Vec<Block> },
 
     /// List (ordered or unordered)
     List {
@@ -181,9 +171,9 @@ impl Inline {
     pub fn to_plain_text(&self) -> String {
         match self {
             Inline::Text(s) => s.clone(),
-            Inline::Strong(inlines) | Inline::Emphasis(inlines) | Inline::Strikethrough(inlines) => {
-                inlines.iter().map(|i| i.to_plain_text()).collect()
-            }
+            Inline::Strong(inlines)
+            | Inline::Emphasis(inlines)
+            | Inline::Strikethrough(inlines) => inlines.iter().map(|i| i.to_plain_text()).collect(),
             Inline::Code(s) => s.clone(),
             Inline::Link { text, .. } => text.iter().map(|i| i.to_plain_text()).collect(),
             Inline::Image { alt, .. } => alt.clone(),

@@ -1,12 +1,15 @@
 //! Lumen: Interactive Markdown viewer
 
-use lumen::{layout_document, parse_markdown, render, LayoutTree, Theme, SearchState, FileManager, Preferences};
-use lumen::layout::{Viewport, LayoutElement};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use lumen::ir::{Block, Inline};
+use lumen::layout::{LayoutElement, Viewport};
+use lumen::{
+    layout_document, parse_markdown, render, FileManager, LayoutTree, Preferences, SearchState,
+    Theme,
+};
 use std::fs;
 use std::io;
 use std::path::PathBuf;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
 
 /// Check if a document contains any images
@@ -16,16 +19,20 @@ fn document_has_images(document: &lumen::Document) -> bool {
             Block::Paragraph { content } | Block::Heading { content, .. } => {
                 content.iter().any(inline_has_images)
             }
-            Block::BlockQuote { blocks } | Block::Callout { content: blocks, .. } => {
-                blocks.iter().any(block_has_images)
-            }
-            Block::List { items, .. } => {
-                items.iter().any(|item| item.content.iter().any(block_has_images))
-            }
+            Block::BlockQuote { blocks }
+            | Block::Callout {
+                content: blocks, ..
+            } => blocks.iter().any(block_has_images),
+            Block::List { items, .. } => items
+                .iter()
+                .any(|item| item.content.iter().any(block_has_images)),
             Block::Table { headers, rows, .. } => {
-                headers.iter().any(|cell| cell.content.iter().any(inline_has_images))
+                headers
+                    .iter()
+                    .any(|cell| cell.content.iter().any(inline_has_images))
                     || rows.iter().any(|row| {
-                        row.iter().any(|cell| cell.content.iter().any(inline_has_images))
+                        row.iter()
+                            .any(|cell| cell.content.iter().any(inline_has_images))
                     })
             }
             _ => false,
@@ -35,9 +42,9 @@ fn document_has_images(document: &lumen::Document) -> bool {
     fn inline_has_images(inline: &Inline) -> bool {
         match inline {
             Inline::Image { .. } => true,
-            Inline::Strong(inlines) | Inline::Emphasis(inlines) | Inline::Strikethrough(inlines) => {
-                inlines.iter().any(inline_has_images)
-            }
+            Inline::Strong(inlines)
+            | Inline::Emphasis(inlines)
+            | Inline::Strikethrough(inlines) => inlines.iter().any(inline_has_images),
             Inline::Link { text, .. } => text.iter().any(inline_has_images),
             _ => false,
         }
@@ -65,10 +72,13 @@ fn main() -> io::Result<()> {
 
     // Check for flags
     let no_images = args.iter().any(|arg| arg == "--no-images" || arg == "-n");
-    let inline_images = args.iter().any(|arg| arg == "--inline-images" || arg == "-i");
+    let inline_images = args
+        .iter()
+        .any(|arg| arg == "--inline-images" || arg == "-i");
 
     // Get non-flag arguments (skip program name)
-    let non_flag_args: Vec<&String> = args.iter()
+    let non_flag_args: Vec<&String> = args
+        .iter()
         .skip(1)
         .filter(|arg| !arg.starts_with('-'))
         .collect();
@@ -115,7 +125,11 @@ fn main() -> io::Result<()> {
         if non_flag_args.len() == 1 {
             file_paths.push(non_flag_args[0]);
         } else {
-            file_paths.extend(non_flag_args[..non_flag_args.len() - 1].iter().map(|s| s.as_str()));
+            file_paths.extend(
+                non_flag_args[..non_flag_args.len() - 1]
+                    .iter()
+                    .map(|s| s.as_str()),
+            );
             theme_name_override = Some(non_flag_args[non_flag_args.len() - 1]);
         }
     }
@@ -127,22 +141,20 @@ fn main() -> io::Result<()> {
     let mut file_manager = FileManager::new();
 
     for file_path in &file_paths {
-        let markdown = fs::read_to_string(file_path)
-            .unwrap_or_else(|e| {
-                eprintln!("Error reading file '{}': {}", file_path, e);
-                std::process::exit(1);
-            });
+        let markdown = fs::read_to_string(file_path).unwrap_or_else(|e| {
+            eprintln!("Error reading file '{}': {}", file_path, e);
+            std::process::exit(1);
+        });
 
         let document = parse_markdown(&markdown);
         file_manager.add_file(PathBuf::from(file_path), document);
     }
 
     // Load theme
-    let theme = Theme::builtin(theme_name)
-        .unwrap_or_else(|| {
-            eprintln!("Unknown theme '{}', using 'docs'", theme_name);
-            Theme::builtin("docs").unwrap()
-        });
+    let theme = Theme::builtin(theme_name).unwrap_or_else(|| {
+        eprintln!("Unknown theme '{}', using 'docs'", theme_name);
+        Theme::builtin("docs").expect("Built-in 'docs' theme should always exist")
+    });
 
     // Update preferences with the theme we're using
     preferences.theme = theme_name.to_string();
@@ -152,7 +164,13 @@ fn main() -> io::Result<()> {
 }
 
 /// Run the interactive viewer with proper terminal cleanup
-fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferences: Preferences, no_images: bool, inline_images: bool) -> io::Result<()> {
+fn run_interactive(
+    mut file_manager: FileManager,
+    mut theme: Theme,
+    mut preferences: Preferences,
+    no_images: bool,
+    inline_images: bool,
+) -> io::Result<()> {
     // Initialize terminal
     let mut terminal = render::init_terminal().map_err(|e| {
         io::Error::new(
@@ -175,14 +193,24 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
         // Image sidebar: shown when document has images (30% width on right)
         let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
 
-        let file_sidebar_width = if show_file_sidebar { (full_width * 20) / 100 } else { 0 };
+        let file_sidebar_width = if show_file_sidebar {
+            (full_width * 20) / 100
+        } else {
+            0
+        };
 
         // Get current document for image check
-        let current_file = file_manager.current_file()
+        let current_file = file_manager
+            .current_file()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No files open"))?;
 
-        let has_images = !inline_images && !no_images && document_has_images(&current_file.document);
-        let image_sidebar_width = if has_images { (full_width * 30) / 100 } else { 0 };
+        let has_images =
+            !inline_images && !no_images && document_has_images(&current_file.document);
+        let image_sidebar_width = if has_images {
+            (full_width * 30) / 100
+        } else {
+            0
+        };
 
         // Content area is remainder
         let layout_width = full_width.saturating_sub(file_sidebar_width + image_sidebar_width);
@@ -191,7 +219,9 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
 
         // Layout current document
         let mut tree = {
-            let current_file = file_manager.current_file().unwrap();
+            let current_file = file_manager
+                .current_file()
+                .expect("Bug: file_manager should always have at least one file");
             layout_document(&current_file.document, &theme, viewport, inline_images)
         };
 
@@ -207,8 +237,8 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
         let mut show_help = false;
         let mut mouse_enabled = preferences.mouse_enabled;
         let mut search_state = SearchState::new();
-        let mut file_jump_buffer = String::new();  // Buffer for typing file numbers
-        let mut file_jump_mode = false;  // Whether we're in file jump mode
+        let mut file_jump_buffer = String::new(); // Buffer for typing file numbers
+        let mut file_jump_mode = false; // Whether we're in file jump mode
 
         // Enable mouse capture if preference is set
         if mouse_enabled {
@@ -221,7 +251,17 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
             let now = Instant::now();
             if needs_render && now.duration_since(last_render) >= frame_duration {
                 let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
-                render::render(&mut terminal, &tree, &theme, show_help, &search_state, &file_manager, show_file_sidebar, file_jump_mode, &file_jump_buffer)?;
+                render::render(
+                    &mut terminal,
+                    &tree,
+                    &theme,
+                    show_help,
+                    &search_state,
+                    &file_manager,
+                    show_file_sidebar,
+                    file_jump_mode,
+                    &file_jump_buffer,
+                )?;
                 last_render = now;
                 needs_render = false;
             }
@@ -242,17 +282,28 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                     if let Ok(file_num) = file_jump_buffer.parse::<usize>() {
                                         if file_num > 0 && file_num <= file_manager.file_count() {
                                             // Save current scroll before switching
-                                            file_manager.save_scroll_position(tree.viewport.scroll_y);
+                                            file_manager
+                                                .save_scroll_position(tree.viewport.scroll_y);
 
                                             // Switch to new file
                                             file_manager.switch_to(file_num - 1);
 
                                             // Recalculate layout
-                                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                                            (viewport, tree) = recalculate_layout(
+                                                &file_manager,
+                                                &terminal,
+                                                &theme,
+                                                file_sidebar_visible,
+                                                no_images,
+                                                inline_images,
+                                            )?;
 
                                             // Restore saved scroll for the new file
                                             let saved_scroll = file_manager.get_scroll_position();
-                                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+                                            tree.viewport.scroll_to_clamped(
+                                                saved_scroll,
+                                                tree.document_height(),
+                                            );
 
                                             // Clear search state when switching files
                                             search_state.deactivate();
@@ -282,7 +333,10 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                     search_state.execute_search(&tree.root);
                                     search_state.accept(); // Exit input mode but keep results
                                     if let Some(m) = search_state.current_match() {
-                                        tree.viewport.scroll_to_clamped(m.y.saturating_sub(5), tree.document_height());
+                                        tree.viewport.scroll_to_clamped(
+                                            m.y.saturating_sub(5),
+                                            tree.document_height(),
+                                        );
                                     }
                                     needs_render = true;
                                 }
@@ -290,7 +344,10 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                     search_state.backspace();
                                     search_state.execute_search(&tree.root);
                                     if let Some(m) = search_state.current_match() {
-                                        tree.viewport.scroll_to_clamped(m.y.saturating_sub(5), tree.document_height());
+                                        tree.viewport.scroll_to_clamped(
+                                            m.y.saturating_sub(5),
+                                            tree.document_height(),
+                                        );
                                     }
                                     needs_render = true;
                                 }
@@ -298,7 +355,10 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                     search_state.add_char(c);
                                     search_state.execute_search(&tree.root);
                                     if let Some(m) = search_state.current_match() {
-                                        tree.viewport.scroll_to_clamped(m.y.saturating_sub(5), tree.document_height());
+                                        tree.viewport.scroll_to_clamped(
+                                            m.y.saturating_sub(5),
+                                            tree.document_height(),
+                                        );
                                     }
                                     needs_render = true;
                                 }
@@ -327,9 +387,15 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             let _ = preferences.save();
 
                             if mouse_enabled {
-                                crossterm::execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
+                                crossterm::execute!(
+                                    io::stdout(),
+                                    crossterm::event::EnableMouseCapture
+                                )?;
                             } else {
-                                crossterm::execute!(io::stdout(), crossterm::event::DisableMouseCapture)?;
+                                crossterm::execute!(
+                                    io::stdout(),
+                                    crossterm::event::DisableMouseCapture
+                                )?;
                             }
                             needs_render = true;
                         } else if key.code == KeyCode::Char('f') && file_manager.file_count() > 1 {
@@ -342,20 +408,32 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             let old_scroll = tree.viewport.scroll_y;
 
                             // Recalculate layout with new sidebar state
-                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                            (viewport, tree) = recalculate_layout(
+                                &file_manager,
+                                &terminal,
+                                &theme,
+                                file_sidebar_visible,
+                                no_images,
+                                inline_images,
+                            )?;
 
                             // Restore scroll position
-                            tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                            tree.viewport
+                                .scroll_to_clamped(old_scroll, tree.document_height());
                             needs_render = true;
                         } else if key.code == KeyCode::Char('t') {
                             // Cycle to next theme
                             let theme_names = Theme::builtin_names();
-                            let current_index = theme_names.iter().position(|&n| n == preferences.theme).unwrap_or(0);
+                            let current_index = theme_names
+                                .iter()
+                                .position(|&n| n == preferences.theme)
+                                .unwrap_or(0);
                             let next_index = (current_index + 1) % theme_names.len();
                             preferences.theme = theme_names[next_index].to_string();
 
                             // Load new theme
-                            theme = Theme::builtin(&preferences.theme).unwrap();
+                            theme = Theme::builtin(&preferences.theme)
+                                .expect("Built-in theme from theme_names should always exist");
 
                             // Save preferences
                             let _ = preferences.save();
@@ -364,10 +442,18 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             let old_scroll = tree.viewport.scroll_y;
 
                             // Recalculate layout with new theme
-                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                            (viewport, tree) = recalculate_layout(
+                                &file_manager,
+                                &terminal,
+                                &theme,
+                                file_sidebar_visible,
+                                no_images,
+                                inline_images,
+                            )?;
 
                             // Restore scroll position
-                            tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                            tree.viewport
+                                .scroll_to_clamped(old_scroll, tree.document_height());
                             needs_render = true;
                         } else if key.code == KeyCode::Tab {
                             // Save current scroll before switching
@@ -377,11 +463,19 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             file_manager.next_file();
 
                             // Recalculate layout
-                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                            (viewport, tree) = recalculate_layout(
+                                &file_manager,
+                                &terminal,
+                                &theme,
+                                file_sidebar_visible,
+                                no_images,
+                                inline_images,
+                            )?;
 
                             // Restore saved scroll for the new file
                             let saved_scroll = file_manager.get_scroll_position();
-                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+                            tree.viewport
+                                .scroll_to_clamped(saved_scroll, tree.document_height());
 
                             // Clear search state when switching files
                             search_state.deactivate();
@@ -394,16 +488,27 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             file_manager.prev_file();
 
                             // Recalculate layout
-                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                            (viewport, tree) = recalculate_layout(
+                                &file_manager,
+                                &terminal,
+                                &theme,
+                                file_sidebar_visible,
+                                no_images,
+                                inline_images,
+                            )?;
 
                             // Restore saved scroll for the new file
                             let saved_scroll = file_manager.get_scroll_position();
-                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+                            tree.viewport
+                                .scroll_to_clamped(saved_scroll, tree.document_height());
 
                             // Clear search state when switching files
                             search_state.deactivate();
                             needs_render = true;
-                        } else if key.code >= KeyCode::Char('1') && key.code <= KeyCode::Char('9') && file_manager.file_count() > 1 {
+                        } else if key.code >= KeyCode::Char('1')
+                            && key.code <= KeyCode::Char('9')
+                            && file_manager.file_count() > 1
+                        {
                             // Jump to file by number (1-9)
                             if let KeyCode::Char(c) = key.code {
                                 let index = (c as u8 - b'1') as usize;
@@ -415,11 +520,19 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                     file_manager.switch_to(index);
 
                                     // Recalculate layout
-                                    (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                                    (viewport, tree) = recalculate_layout(
+                                        &file_manager,
+                                        &terminal,
+                                        &theme,
+                                        file_sidebar_visible,
+                                        no_images,
+                                        inline_images,
+                                    )?;
 
                                     // Restore saved scroll for the new file
                                     let saved_scroll = file_manager.get_scroll_position();
-                                    tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+                                    tree.viewport
+                                        .scroll_to_clamped(saved_scroll, tree.document_height());
 
                                     // Clear search state when switching files
                                     search_state.deactivate();
@@ -434,10 +547,18 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                                 eprintln!("Failed to reload file: {}", e);
                             } else {
                                 // Recalculate layout
-                                (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                                (viewport, tree) = recalculate_layout(
+                                    &file_manager,
+                                    &terminal,
+                                    &theme,
+                                    file_sidebar_visible,
+                                    no_images,
+                                    inline_images,
+                                )?;
 
                                 // Restore scroll position
-                                tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                                tree.viewport
+                                    .scroll_to_clamped(old_scroll, tree.document_height());
                                 needs_render = true;
                             }
                         } else if show_help && key.code == KeyCode::Esc {
@@ -447,7 +568,7 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                             match handle_key(key, &mut tree, &mut search_state) {
                                 Action::Quit => break,
                                 Action::Continue => {
-                                    needs_render = true;  // Mark that we need to render
+                                    needs_render = true; // Mark that we need to render
                                 }
                             }
                         }
@@ -464,10 +585,18 @@ fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferen
                         let old_scroll = tree.viewport.scroll_y;
 
                         // Recalculate layout with new terminal size
-                        (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+                        (viewport, tree) = recalculate_layout(
+                            &file_manager,
+                            &terminal,
+                            &theme,
+                            file_sidebar_visible,
+                            no_images,
+                            inline_images,
+                        )?;
 
                         // Restore scroll position
-                        tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                        tree.viewport
+                            .scroll_to_clamped(old_scroll, tree.document_height());
                         needs_render = true;
                     }
                     _ => {}
@@ -496,14 +625,25 @@ fn recalculate_layout(
     inline_images: bool,
 ) -> io::Result<(Viewport, LayoutTree)> {
     let size = terminal.size()?;
-    let current_file = file_manager.current_file()
+    let current_file = file_manager
+        .current_file()
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No files open"))?;
 
     let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
-    let file_sidebar_width = if show_file_sidebar { (size.width * 20) / 100 } else { 0 };
+    let file_sidebar_width = if show_file_sidebar {
+        (size.width * 20) / 100
+    } else {
+        0
+    };
     let has_images = !inline_images && !no_images && document_has_images(&current_file.document);
-    let image_sidebar_width = if has_images { (size.width * 30) / 100 } else { 0 };
-    let layout_width = size.width.saturating_sub(file_sidebar_width + image_sidebar_width);
+    let image_sidebar_width = if has_images {
+        (size.width * 30) / 100
+    } else {
+        0
+    };
+    let layout_width = size
+        .width
+        .saturating_sub(file_sidebar_width + image_sidebar_width);
     let viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
 
     let mut tree = layout_document(&current_file.document, theme, viewport, inline_images);
@@ -549,19 +689,23 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree, search_state: &mut SearchSta
             Action::Continue
         }
         KeyCode::Char('d') => {
-            tree.viewport.scroll_by_clamped(tree.viewport.height as i16 / 2, doc_height);
+            tree.viewport
+                .scroll_by_clamped(tree.viewport.height as i16 / 2, doc_height);
             Action::Continue
         }
         KeyCode::Char('u') => {
-            tree.viewport.scroll_by_clamped(-(tree.viewport.height as i16 / 2), doc_height);
+            tree.viewport
+                .scroll_by_clamped(-(tree.viewport.height as i16 / 2), doc_height);
             Action::Continue
         }
         KeyCode::PageDown | KeyCode::Char(' ') => {
-            tree.viewport.scroll_by_clamped(tree.viewport.height as i16, doc_height);
+            tree.viewport
+                .scroll_by_clamped(tree.viewport.height as i16, doc_height);
             Action::Continue
         }
         KeyCode::PageUp => {
-            tree.viewport.scroll_by_clamped(-(tree.viewport.height as i16), doc_height);
+            tree.viewport
+                .scroll_by_clamped(-(tree.viewport.height as i16), doc_height);
             Action::Continue
         }
         KeyCode::Home | KeyCode::Char('g') => {
@@ -569,7 +713,8 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree, search_state: &mut SearchSta
             Action::Continue
         }
         KeyCode::End | KeyCode::Char('G') => {
-            tree.viewport.scroll_to_clamped(tree.document_height(), doc_height);
+            tree.viewport
+                .scroll_to_clamped(tree.document_height(), doc_height);
             Action::Continue
         }
         KeyCode::Char('n') => {
@@ -577,7 +722,7 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree, search_state: &mut SearchSta
             if !search_state.matches.is_empty() {
                 search_state.next_match();
                 if let Some(m) = search_state.current_match() {
-                    tree.viewport.scroll_to_clamped(m.y.saturating_sub(5), doc_height);
+                    scroll_to_search_match(tree, m.y, doc_height);
                 }
             } else {
                 // Otherwise jump to next heading
@@ -590,7 +735,7 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree, search_state: &mut SearchSta
             if !search_state.matches.is_empty() {
                 search_state.prev_match();
                 if let Some(m) = search_state.current_match() {
-                    tree.viewport.scroll_to_clamped(m.y.saturating_sub(5), doc_height);
+                    scroll_to_search_match(tree, m.y, doc_height);
                 }
             }
             Action::Continue
@@ -602,6 +747,13 @@ fn handle_key(key: KeyEvent, tree: &mut LayoutTree, search_state: &mut SearchSta
         }
         _ => Action::Continue,
     }
+}
+
+/// Scroll viewport to center a search match with some padding from the top
+fn scroll_to_search_match(tree: &mut LayoutTree, match_y: u16, doc_height: u16) {
+    // Position match 5 lines from top of viewport for context
+    tree.viewport
+        .scroll_to_clamped(match_y.saturating_sub(5), doc_height);
 }
 
 fn jump_to_next_heading(tree: &mut LayoutTree, forward: bool) {
@@ -635,4 +787,3 @@ fn jump_to_next_heading(tree: &mut LayoutTree, forward: bool) {
         }
     }
 }
-
