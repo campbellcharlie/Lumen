@@ -544,32 +544,16 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
                 if let Some(first_nested) = nested_items.first_mut() {
                     if let Some(Block::Paragraph { content }) = first_nested.content.first_mut() {
                         // Check if paragraph starts with multiple inline elements (indicating merge)
+                        // When pulldown-cmark merges parent text into first child, the paragraph
+                        // will have 2+ inline elements (parent + child content)
                         if content.len() >= 2 {
-                            match &content[0] {
-                                // Case 1: Strong text ending with ":" (e.g., "**Research:**")
-                                Inline::Strong(strong_content) => {
-                                    let ends_with_colon = strong_content.iter().any(|inline| {
-                                        if let Inline::Text(text) = inline {
-                                            text.trim().ends_with(':')
-                                        } else {
-                                            false
-                                        }
-                                    });
-
-                                    if ends_with_colon {
-                                        Some(content.remove(0))
-                                    } else {
-                                        None
-                                    }
-                                }
-                                // Case 2: Link element (e.g., "[Getting Started](#link)")
-                                // This handles TOC-style nested lists where parent link gets merged
-                                Inline::Link { .. } => {
-                                    // Extract the first link as the parent's content
-                                    Some(content.remove(0))
-                                }
-                                _ => None,
-                            }
+                            // Extract the first inline element as the parent's content
+                            // This handles:
+                            // - Plain text: "Parent item"
+                            // - Strong text: "**Label:**"
+                            // - Links: "[Getting Started](#link)"
+                            // - Any other inline content
+                            Some(content.remove(0))
                         } else {
                             None
                         }
