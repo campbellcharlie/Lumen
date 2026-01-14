@@ -65,6 +65,7 @@ lumen *.md
 |-----|--------|
 | `Tab` | Switch to next file (when multiple files are open) |
 | `Shift+Tab` | Switch to previous file |
+| `f` | Toggle file sidebar visibility (when multiple files are open) |
 
 ### General
 | Key | Action |
