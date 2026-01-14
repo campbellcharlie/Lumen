@@ -536,6 +536,7 @@ impl MarkdownConverter {
 /// This function detects that pattern and restructures it so "Label:" becomes
 /// a paragraph in the parent ListItem.
 fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
+    // First pass: fix merged labels and recursively process nested lists
     for item in items.iter_mut() {
         // Check if this item has only one child block, and it's a List
         if item.content.len() == 1 {
@@ -594,6 +595,29 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
             if let Block::List { items: nested_items, .. } = block {
                 fix_merged_list_labels(nested_items);
             }
+        }
+    }
+
+    // Second pass: flatten empty parent items (items that contain ONLY a nested list)
+    // This removes unnecessary nesting levels created by pulldown-cmark
+    let mut i = 0;
+    while i < items.len() {
+        let should_flatten = items[i].content.len() == 1
+            && matches!(items[i].content[0], Block::List { .. });
+
+        if should_flatten {
+            // Extract the nested list
+            if let Block::List { items: mut nested_items, .. } = items.remove(i).content.into_iter().next().unwrap() {
+                // Recursively flatten the nested items before inserting
+                fix_merged_list_labels(&mut nested_items);
+
+                // Insert all nested items at the current position
+                for (offset, nested_item) in nested_items.into_iter().enumerate() {
+                    items.insert(i + offset, nested_item);
+                }
+            }
+        } else {
+            i += 1;
         }
     }
 }

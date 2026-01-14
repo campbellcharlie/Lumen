@@ -5,9 +5,10 @@ use lumen::parse_markdown;
 fn main() {
     let markdown = r#"# Test
 
--
-  - Child item
-  - Another child
+- Level 1
+  - Level 2
+    - Level 3
+      - Level 4
 "#;
 
     let doc = parse_markdown(markdown);
