@@ -150,6 +150,16 @@ impl MarkdownConverter {
                 });
             }
             Tag::List(start) => {
+                // If we're starting a list inside a ListItem and have accumulated text,
+                // wrap it in a paragraph first. This handles tight lists where pulldown-cmark
+                // doesn't emit paragraph boundaries.
+                if self.block_stack.iter().any(|ctx| matches!(ctx, BlockContext::ListItem { .. })) {
+                    let content = std::mem::take(&mut self.current_inlines);
+                    if !content.is_empty() {
+                        self.push_block(Block::Paragraph { content });
+                    }
+                }
+
                 let (ordered, start_num) = match start {
                     Some(n) => (true, n as usize),
                     None => (false, 1),
