@@ -671,6 +671,41 @@ fn handle_mouse(mouse: MouseEvent, tree: &mut LayoutTree) -> bool {
             tree.viewport.scroll_by_clamped(-3, doc_height);
             true
         }
+        MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+            // Click detection - check if we clicked on a link
+            let click_x = mouse.column;
+            let click_y = mouse.row;
+
+            // Adjust for scroll position (click_y is viewport-relative)
+            let doc_y = click_y + tree.viewport.scroll_y;
+
+            // Check if we clicked on any link
+            for region in &tree.hit_regions {
+                if let lumen::layout::HitElement::Link { url, .. } = &region.element {
+                    if region.rect.contains(click_x, doc_y) {
+                        // Handle internal anchor links
+                        if url.starts_with('#') {
+                            let anchor = &url[1..]; // Remove the '#'
+
+                            // Find the heading with this anchor
+                            for heading_region in &tree.hit_regions {
+                                if let lumen::layout::HitElement::Heading { id, .. } = &heading_region.element {
+                                    if id == anchor {
+                                        // Jump to this heading
+                                        tree.viewport.scroll_y = heading_region.rect.y;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                        // For external links, we could open them in a browser,
+                        // but for now we'll just ignore them
+                        return false;
+                    }
+                }
+            }
+            false
+        }
         _ => false,
     }
 }

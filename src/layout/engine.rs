@@ -242,6 +242,29 @@ fn layout_paragraph(
     let mut height = lines.len().max(1) as u16;
     let mut children = Vec::new();
 
+    // Create hit regions for links in the paragraph
+    for (line_idx, line) in lines.iter().enumerate() {
+        let line_y = y + line_idx as u16;
+        let mut current_x = x;
+
+        for segment in &line.segments {
+            if let Some(url) = &segment.link_url {
+                // Extract plain text from link
+                let text = segment.text.clone();
+                let segment_width = text.chars().count() as u16;
+
+                ctx.hit_regions.push(HitRegion {
+                    rect: Rectangle::new(current_x, line_y, segment_width, 1),
+                    element: HitElement::Link {
+                        url: url.clone(),
+                        text: text.clone(),
+                    },
+                });
+            }
+            current_x += segment.text.chars().count() as u16;
+        }
+    }
+
     // If inline images mode is enabled, create Image child nodes
     if ctx.inline_images && !inline_imgs.is_empty() {
         // Default image height in terminal rows (can be adjusted)
