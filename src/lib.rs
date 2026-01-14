@@ -18,6 +18,7 @@
 //! - `layout`: Layout engine (positions + sizes)
 //! - `render`: Terminal renderer
 //! - `search`: Search functionality
+//! - `preferences`: User preferences management
 
 pub mod ir;
 pub mod parser;
@@ -25,9 +26,13 @@ pub mod theme;
 pub mod layout;
 pub mod render;
 pub mod search;
+pub mod file_manager;
+pub mod preferences;
 
 pub use ir::Document;
 pub use parser::parse_markdown;
 pub use theme::Theme;
 pub use layout::{layout_document, LayoutTree};
 pub use search::SearchState;
+pub use file_manager::{FileManager, OpenFile};
+pub use preferences::Preferences;

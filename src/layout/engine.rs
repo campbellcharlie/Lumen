@@ -76,6 +76,47 @@ fn layout_blocks(
     nodes
 }
 
+/// Layout blocks for list item content with tight spacing (no paragraph margins)
+fn layout_list_item_blocks(
+    blocks: &[Block],
+    x: u16,
+    mut y: u16,
+    width: u16,
+    theme: &Theme,
+    node_counter: &mut NodeId,
+    hit_regions: &mut Vec<HitRegion>,
+    images: &mut Vec<ImageReference>,
+    inline_images: bool,
+) -> Vec<LayoutNode> {
+    let mut nodes = Vec::new();
+
+    for block in blocks {
+        // Add top margin (only for headings, not paragraphs)
+        let margin_top = match block {
+            Block::Heading { .. } => theme.spacing.heading_margin_top,
+            _ => 0,
+        };
+        y += margin_top;
+
+        let node = layout_block(block, x, y, width, theme, node_counter, hit_regions, images, inline_images);
+        y += node.rect.height;
+
+        // Add bottom margin (no paragraph spacing in tight lists)
+        let margin_bottom = match block {
+            Block::Heading { .. } => theme.spacing.heading_margin_bottom,
+            Block::CodeBlock { .. } => 1,
+            Block::BlockQuote { .. } => 1,
+            Block::Table { .. } => 1,
+            _ => 0,  // No spacing for paragraphs and lists in tight list items
+        };
+        y += margin_bottom;
+
+        nodes.push(node);
+    }
+
+    nodes
+}
+
 fn layout_block(
     block: &Block,
     x: u16,
@@ -163,7 +204,8 @@ fn layout_paragraph(
     node_counter: &mut NodeId,
 ) -> LayoutNode {
     let (lines, inline_imgs) = layout_text(content, width, theme, y, images, inline_images);
-    let mut height = lines.len() as u16;
+    // Ensure minimum height of 1 to prevent nested elements from overlapping
+    let mut height = lines.len().max(1) as u16;
     let mut children = Vec::new();
 
     // If inline images mode is enabled, create Image child nodes
@@ -344,12 +386,15 @@ fn layout_list(
             "•".to_string()
         };
 
-        let marker_width = marker.len() as u16;
+        // Calculate display width (not byte length) for proper positioning
+        // The bullet "•" is 3 bytes but only 1 char wide in the terminal
+        let marker_width = marker.chars().count() as u16;
         // Add minimal 1-space gap between marker and content
         let content_start = x + marker_width + 1;
         let content_width = width.saturating_sub(marker_width + 1);
 
-        let item_children = layout_blocks(
+        // Layout list item children with tight spacing (no paragraph margins)
+        let item_children = layout_list_item_blocks(
             &item.content,
             content_start,
             current_y,
@@ -618,6 +663,7 @@ fn layout_horizontal_rule(x: u16, y: u16, width: u16, _theme: &Theme, id: NodeId
 fn block_margin_top(block: &Block, theme: &Theme) -> u16 {
     match block {
         Block::Heading { .. } => theme.spacing.heading_margin_top,
+        Block::List { .. } => 0,  // Lists should not add top margin (spacing comes from previous block)
         _ => 0,
     }
 }
@@ -627,7 +673,7 @@ fn block_margin_bottom(block: &Block, theme: &Theme) -> u16 {
         Block::Paragraph { .. } => theme.spacing.paragraph_spacing,
         Block::Heading { .. } => theme.spacing.heading_margin_bottom,
         Block::CodeBlock { .. } => 1,
-        Block::List { .. } => 1,  // Add spacing after lists
+        Block::List { .. } => 0,  // Lists handle their own spacing
         Block::BlockQuote { .. } => 1,  // Add spacing after blockquotes
         Block::Table { .. } => 1,  // Add spacing after tables
         _ => 0,

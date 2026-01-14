@@ -47,7 +47,7 @@ mod tests {
             },
         ]);
 
-        let tree = layout_document(&doc, &theme, viewport);
+        let tree = layout_document(&doc, &theme, viewport, false);
 
         // Hit test on heading
         let hit = tree.hit_test(10, 2); // Assuming heading is around y=2
@@ -66,7 +66,7 @@ mod tests {
             50 // Many paragraphs to exceed viewport
         ]);
 
-        let tree = layout_document(&doc, &theme, viewport);
+        let tree = layout_document(&doc, &theme, viewport, false);
 
         assert!(tree.can_scroll_down());
         assert!(!tree.can_scroll_up());

@@ -9,7 +9,10 @@ pub mod defaults;
 
 pub use color::{AnsiColor, Color};
 pub use types::*;
-pub use defaults::{docs_theme, neon_theme, minimal_theme};
+pub use defaults::{
+    docs_theme, neon_theme, minimal_theme, dracula_theme, monokai_theme,
+    solarized_theme, gruvbox_theme, nord_theme, tokyo_night_theme, catppuccin_theme
+};
 
 use std::io;
 
@@ -38,13 +41,31 @@ impl Theme {
             "docs" => Some(docs_theme()),
             "neon" => Some(neon_theme()),
             "minimal" => Some(minimal_theme()),
+            "dracula" => Some(dracula_theme()),
+            "monokai" => Some(monokai_theme()),
+            "solarized" => Some(solarized_theme()),
+            "gruvbox" => Some(gruvbox_theme()),
+            "nord" => Some(nord_theme()),
+            "tokyo-night" | "tokyonight" => Some(tokyo_night_theme()),
+            "catppuccin" => Some(catppuccin_theme()),
             _ => None,
         }
     }
 
     /// List all built-in theme names
     pub fn builtin_names() -> Vec<&'static str> {
-        vec!["docs", "neon", "minimal"]
+        vec![
+            "docs",
+            "neon",
+            "minimal",
+            "dracula",
+            "monokai",
+            "solarized",
+            "gruvbox",
+            "nord",
+            "tokyo-night",
+            "catppuccin",
+        ]
     }
 }
 
@@ -57,15 +78,29 @@ mod tests {
         assert!(Theme::builtin("docs").is_some());
         assert!(Theme::builtin("neon").is_some());
         assert!(Theme::builtin("minimal").is_some());
+        assert!(Theme::builtin("dracula").is_some());
+        assert!(Theme::builtin("monokai").is_some());
+        assert!(Theme::builtin("solarized").is_some());
+        assert!(Theme::builtin("gruvbox").is_some());
+        assert!(Theme::builtin("nord").is_some());
+        assert!(Theme::builtin("tokyo-night").is_some());
+        assert!(Theme::builtin("catppuccin").is_some());
         assert!(Theme::builtin("nonexistent").is_none());
     }
 
     #[test]
     fn test_builtin_names() {
         let names = Theme::builtin_names();
-        assert_eq!(names.len(), 3);
+        assert_eq!(names.len(), 10);
         assert!(names.contains(&"docs"));
         assert!(names.contains(&"neon"));
         assert!(names.contains(&"minimal"));
+        assert!(names.contains(&"dracula"));
+        assert!(names.contains(&"monokai"));
+        assert!(names.contains(&"solarized"));
+        assert!(names.contains(&"gruvbox"));
+        assert!(names.contains(&"nord"));
+        assert!(names.contains(&"tokyo-night"));
+        assert!(names.contains(&"catppuccin"));
     }
 }

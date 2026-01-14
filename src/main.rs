@@ -1,10 +1,11 @@
 //! Lumen: Interactive Markdown viewer
 
-use lumen::{layout_document, parse_markdown, render, LayoutTree, Theme, SearchState};
+use lumen::{layout_document, parse_markdown, render, LayoutTree, Theme, SearchState, FileManager, Preferences};
 use lumen::layout::{Viewport, LayoutElement};
 use lumen::ir::{Block, Inline};
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
 
@@ -66,37 +67,75 @@ fn main() -> io::Result<()> {
     let no_images = args.iter().any(|arg| arg == "--no-images" || arg == "-n");
     let inline_images = args.iter().any(|arg| arg == "--inline-images" || arg == "-i");
 
-    // Get non-flag arguments
+    // Get non-flag arguments (skip program name)
     let non_flag_args: Vec<&String> = args.iter()
+        .skip(1)
         .filter(|arg| !arg.starts_with('-'))
         .collect();
 
-    // Read from file
-    if non_flag_args.len() < 2 {
-        eprintln!("Usage: lumen <file.md> [theme] [options]");
+    // Check for file arguments
+    if non_flag_args.is_empty() {
+        eprintln!("Usage: lumen <file.md> [file2.md ...] [theme] [options]");
         eprintln!("\nOptions:");
         eprintln!("  --no-images, -n       Disable all image rendering");
         eprintln!("  --inline-images, -i   Render images inline (default: sidebar)");
         eprintln!("\nAvailable themes: {}", Theme::builtin_names().join(", "));
         eprintln!("\nExamples:");
         eprintln!("  lumen README.md");
+        eprintln!("  lumen README.md CHANGELOG.md");
         eprintln!("  lumen README.md neon");
         eprintln!("  lumen README.md --inline-images");
         eprintln!("  lumen README.md --no-images");
+        eprintln!("\nKeyboard shortcuts:");
+        eprintln!("  Tab / Shift+Tab       Switch between open files");
+        eprintln!("  1-9                   Jump to file 1-9");
+        eprintln!("  :N                    Jump to file N (e.g., :44)");
         std::process::exit(1);
     }
 
-    let file_path = non_flag_args.get(1).unwrap();
-    let theme_name = non_flag_args.get(2).map(|s| s.as_str()).unwrap_or("docs");
+    // Load user preferences
+    let mut preferences = Preferences::load();
 
-    let markdown = fs::read_to_string(file_path)
-        .unwrap_or_else(|e| {
-            eprintln!("Error reading file '{}': {}", file_path, e);
-            std::process::exit(1);
-        });
+    // Separate file paths from theme name
+    // Last non-md argument is potentially a theme name
+    let mut file_paths = Vec::new();
+    let mut theme_name_override: Option<&str> = None;
 
-    // Parse markdown
-    let document = parse_markdown(&markdown);
+    for arg in &non_flag_args {
+        if arg.ends_with(".md") || arg.ends_with(".markdown") {
+            file_paths.push(arg.as_str());
+        } else {
+            // Assume it's a theme name
+            theme_name_override = Some(arg.as_str());
+        }
+    }
+
+    // If no .md files found, treat all as file paths (last one might be theme)
+    if file_paths.is_empty() {
+        if non_flag_args.len() == 1 {
+            file_paths.push(non_flag_args[0]);
+        } else {
+            file_paths.extend(non_flag_args[..non_flag_args.len() - 1].iter().map(|s| s.as_str()));
+            theme_name_override = Some(non_flag_args[non_flag_args.len() - 1]);
+        }
+    }
+
+    // Determine which theme to use: command line override or saved preference
+    let theme_name = theme_name_override.unwrap_or(&preferences.theme);
+
+    // Create file manager and load files
+    let mut file_manager = FileManager::new();
+
+    for file_path in &file_paths {
+        let markdown = fs::read_to_string(file_path)
+            .unwrap_or_else(|e| {
+                eprintln!("Error reading file '{}': {}", file_path, e);
+                std::process::exit(1);
+            });
+
+        let document = parse_markdown(&markdown);
+        file_manager.add_file(PathBuf::from(file_path), document);
+    }
 
     // Load theme
     let theme = Theme::builtin(theme_name)
@@ -105,12 +144,15 @@ fn main() -> io::Result<()> {
             Theme::builtin("docs").unwrap()
         });
 
+    // Update preferences with the theme we're using
+    preferences.theme = theme_name.to_string();
+
     // Initialize terminal and run - ensure cleanup happens even on error
-    run_interactive(&document, &theme, no_images, inline_images, Some(file_path.to_string()))
+    run_interactive(file_manager, theme, preferences, no_images, inline_images)
 }
 
 /// Run the interactive viewer with proper terminal cleanup
-fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images: bool, inline_images: bool, file_path: Option<String>) -> io::Result<()> {
+fn run_interactive(mut file_manager: FileManager, mut theme: Theme, mut preferences: Preferences, no_images: bool, inline_images: bool) -> io::Result<()> {
     // Initialize terminal
     let mut terminal = render::init_terminal().map_err(|e| {
         io::Error::new(
@@ -125,25 +167,35 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
         let full_width = size.width;
         let height = size.height.saturating_sub(1); // -1 for status bar
 
-        // Make document mutable for reloading
-        let mut document = initial_document.clone();
+        // File sidebar visibility (from preferences, can be toggled by user)
+        let mut file_sidebar_visible = preferences.file_sidebar_visible;
 
-        // Check if document has images (for sidebar mode only)
-        let has_images = !inline_images && !no_images && document_has_images(&document);
+        // Calculate layout based on sidebars
+        // File sidebar: shown when multiple files open AND user hasn't hidden it (20% width on left)
+        // Image sidebar: shown when document has images (30% width on right)
+        let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
 
-        // Adjust viewport width if sidebar will be shown (70% for content, 30% for sidebar)
-        let layout_width = if has_images {
-            (full_width * 70) / 100
-        } else {
-            full_width
-        };
+        let file_sidebar_width = if show_file_sidebar { (full_width * 20) / 100 } else { 0 };
+
+        // Get current document for image check
+        let current_file = file_manager.current_file()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No files open"))?;
+
+        let has_images = !inline_images && !no_images && document_has_images(&current_file.document);
+        let image_sidebar_width = if has_images { (full_width * 30) / 100 } else { 0 };
+
+        // Content area is remainder
+        let layout_width = full_width.saturating_sub(file_sidebar_width + image_sidebar_width);
 
         let mut viewport = Viewport::new(layout_width, height);
 
-        // Layout document
-        let mut tree = layout_document(&document, theme, viewport, inline_images);
+        // Layout current document
+        let mut tree = {
+            let current_file = file_manager.current_file().unwrap();
+            layout_document(&current_file.document, &theme, viewport, inline_images)
+        };
 
-        // Disable sidebar if requested
+        // Disable image sidebar if requested
         if no_images {
             tree.images.clear();
         }
@@ -153,15 +205,23 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
         let mut last_render = Instant::now();
         let mut needs_render = true;
         let mut show_help = false;
-        let mut mouse_enabled = false;  // Start with mouse disabled for text selection
+        let mut mouse_enabled = preferences.mouse_enabled;
         let mut search_state = SearchState::new();
+        let mut file_jump_buffer = String::new();  // Buffer for typing file numbers
+        let mut file_jump_mode = false;  // Whether we're in file jump mode
+
+        // Enable mouse capture if preference is set
+        if mouse_enabled {
+            crossterm::execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
+        }
 
         // Main event loop
         loop {
             // Render only if needed and enough time has passed
             let now = Instant::now();
             if needs_render && now.duration_since(last_render) >= frame_duration {
-                render::render(&mut terminal, &tree, theme, show_help, &search_state)?;
+                let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
+                render::render(&mut terminal, &tree, &theme, show_help, &search_state, &file_manager, show_file_sidebar, file_jump_mode, &file_jump_buffer)?;
                 last_render = now;
                 needs_render = false;
             }
@@ -170,8 +230,49 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
             if event::poll(Duration::from_millis(16))? {
                 match event::read()? {
                     Event::Key(key) => {
-                        // Handle search mode input
-                        if search_state.active {
+                        // Handle file jump mode input
+                        if file_jump_mode {
+                            match key.code {
+                                KeyCode::Esc => {
+                                    file_jump_mode = false;
+                                    file_jump_buffer.clear();
+                                    needs_render = true;
+                                }
+                                KeyCode::Enter => {
+                                    if let Ok(file_num) = file_jump_buffer.parse::<usize>() {
+                                        if file_num > 0 && file_num <= file_manager.file_count() {
+                                            // Save current scroll before switching
+                                            file_manager.save_scroll_position(tree.viewport.scroll_y);
+
+                                            // Switch to new file
+                                            file_manager.switch_to(file_num - 1);
+
+                                            // Recalculate layout
+                                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                                            // Restore saved scroll for the new file
+                                            let saved_scroll = file_manager.get_scroll_position();
+                                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+
+                                            // Clear search state when switching files
+                                            search_state.deactivate();
+                                        }
+                                    }
+                                    file_jump_mode = false;
+                                    file_jump_buffer.clear();
+                                    needs_render = true;
+                                }
+                                KeyCode::Backspace => {
+                                    file_jump_buffer.pop();
+                                    needs_render = true;
+                                }
+                                KeyCode::Char(c) if c.is_ascii_digit() => {
+                                    file_jump_buffer.push(c);
+                                    needs_render = true;
+                                }
+                                _ => {}
+                            }
+                        } else if search_state.active {
                             match key.code {
                                 KeyCode::Esc => {
                                     search_state.deactivate();
@@ -211,48 +312,133 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
                             // Activate search mode
                             search_state.activate();
                             needs_render = true;
+                        } else if key.code == KeyCode::Char(':') && file_manager.file_count() > 1 {
+                            // Activate file jump mode
+                            file_jump_mode = true;
+                            file_jump_buffer.clear();
+                            needs_render = true;
                         } else if key.code == KeyCode::Char('h') {
                             show_help = !show_help;
                             needs_render = true;
                         } else if key.code == KeyCode::Char('m') {
                             // Toggle mouse mode
                             mouse_enabled = !mouse_enabled;
+                            preferences.mouse_enabled = mouse_enabled;
+                            let _ = preferences.save();
+
                             if mouse_enabled {
                                 crossterm::execute!(io::stdout(), crossterm::event::EnableMouseCapture)?;
                             } else {
                                 crossterm::execute!(io::stdout(), crossterm::event::DisableMouseCapture)?;
                             }
                             needs_render = true;
-                        } else if key.code == KeyCode::Char('r') && file_path.is_some() {
-                            // Reload file
-                            let path = file_path.as_ref().unwrap();
-                            match fs::read_to_string(path) {
-                                Ok(markdown) => {
-                                    let old_scroll = tree.viewport.scroll_y;
-                                    document = parse_markdown(&markdown);
+                        } else if key.code == KeyCode::Char('f') && file_manager.file_count() > 1 {
+                            // Toggle file sidebar visibility
+                            file_sidebar_visible = !file_sidebar_visible;
+                            preferences.file_sidebar_visible = file_sidebar_visible;
+                            let _ = preferences.save();
 
-                                    // Recalculate layout width for sidebar
-                                    let size = terminal.size()?;
-                                    let has_images = !inline_images && !no_images && document_has_images(&document);
-                                    let layout_width = if has_images {
-                                        (size.width * 70) / 100
-                                    } else {
-                                        size.width
-                                    };
-                                    viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
+                            // Save current scroll before recalculating
+                            let old_scroll = tree.viewport.scroll_y;
 
-                                    tree = layout_document(&document, theme, viewport, inline_images);
-                                    if no_images {
-                                        tree.images.clear();
-                                    }
-                                    // Try to preserve scroll position
-                                    tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                            // Recalculate layout with new sidebar state
+                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                            // Restore scroll position
+                            tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                            needs_render = true;
+                        } else if key.code == KeyCode::Char('t') {
+                            // Cycle to next theme
+                            let theme_names = Theme::builtin_names();
+                            let current_index = theme_names.iter().position(|&n| n == preferences.theme).unwrap_or(0);
+                            let next_index = (current_index + 1) % theme_names.len();
+                            preferences.theme = theme_names[next_index].to_string();
+
+                            // Load new theme
+                            theme = Theme::builtin(&preferences.theme).unwrap();
+
+                            // Save preferences
+                            let _ = preferences.save();
+
+                            // Save current scroll
+                            let old_scroll = tree.viewport.scroll_y;
+
+                            // Recalculate layout with new theme
+                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                            // Restore scroll position
+                            tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                            needs_render = true;
+                        } else if key.code == KeyCode::Tab {
+                            // Save current scroll before switching
+                            file_manager.save_scroll_position(tree.viewport.scroll_y);
+
+                            // Switch to next file
+                            file_manager.next_file();
+
+                            // Recalculate layout
+                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                            // Restore saved scroll for the new file
+                            let saved_scroll = file_manager.get_scroll_position();
+                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+
+                            // Clear search state when switching files
+                            search_state.deactivate();
+                            needs_render = true;
+                        } else if key.code == KeyCode::BackTab {
+                            // Save current scroll before switching
+                            file_manager.save_scroll_position(tree.viewport.scroll_y);
+
+                            // Switch to previous file (Shift+Tab)
+                            file_manager.prev_file();
+
+                            // Recalculate layout
+                            (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                            // Restore saved scroll for the new file
+                            let saved_scroll = file_manager.get_scroll_position();
+                            tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+
+                            // Clear search state when switching files
+                            search_state.deactivate();
+                            needs_render = true;
+                        } else if key.code >= KeyCode::Char('1') && key.code <= KeyCode::Char('9') && file_manager.file_count() > 1 {
+                            // Jump to file by number (1-9)
+                            if let KeyCode::Char(c) = key.code {
+                                let index = (c as u8 - b'1') as usize;
+                                if index < file_manager.file_count() {
+                                    // Save current scroll before switching
+                                    file_manager.save_scroll_position(tree.viewport.scroll_y);
+
+                                    // Switch to file
+                                    file_manager.switch_to(index);
+
+                                    // Recalculate layout
+                                    (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                                    // Restore saved scroll for the new file
+                                    let saved_scroll = file_manager.get_scroll_position();
+                                    tree.viewport.scroll_to_clamped(saved_scroll, tree.document_height());
+
+                                    // Clear search state when switching files
+                                    search_state.deactivate();
                                     needs_render = true;
                                 }
-                                Err(e) => {
-                                    // TODO: Show error message to user
-                                    eprintln!("Failed to reload file: {}", e);
-                                }
+                            }
+                        } else if key.code == KeyCode::Char('r') {
+                            // Save scroll before reload
+                            let old_scroll = tree.viewport.scroll_y;
+
+                            if let Err(e) = file_manager.reload_current() {
+                                eprintln!("Failed to reload file: {}", e);
+                            } else {
+                                // Recalculate layout
+                                (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                                // Restore scroll position
+                                tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
+                                needs_render = true;
                             }
                         } else if show_help && key.code == KeyCode::Esc {
                             show_help = false;
@@ -274,15 +460,14 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
                         }
                     }
                     Event::Resize(_, _) => {
-                        let size = terminal.size()?;
-                        let has_images = !inline_images && !no_images && document_has_images(&document);
-                        let layout_width = if has_images {
-                            (size.width * 70) / 100
-                        } else {
-                            size.width
-                        };
-                        viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
-                        tree = layout_document(&document, theme, viewport, inline_images);
+                        // Save scroll before resize
+                        let old_scroll = tree.viewport.scroll_y;
+
+                        // Recalculate layout with new terminal size
+                        (viewport, tree) = recalculate_layout(&file_manager, &terminal, &theme, file_sidebar_visible, no_images, inline_images)?;
+
+                        // Restore scroll position
+                        tree.viewport.scroll_to_clamped(old_scroll, tree.document_height());
                         needs_render = true;
                     }
                     _ => {}
@@ -298,6 +483,35 @@ fn run_interactive(initial_document: &lumen::Document, theme: &Theme, no_images:
 
     // Return the first error that occurred
     cleanup_result.and(restore_result)
+}
+
+/// Helper function to recalculate layout for the current file
+/// Returns (viewport, tree) tuple
+fn recalculate_layout(
+    file_manager: &FileManager,
+    terminal: &render::Terminal,
+    theme: &Theme,
+    file_sidebar_visible: bool,
+    no_images: bool,
+    inline_images: bool,
+) -> io::Result<(Viewport, LayoutTree)> {
+    let size = terminal.size()?;
+    let current_file = file_manager.current_file()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No files open"))?;
+
+    let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
+    let file_sidebar_width = if show_file_sidebar { (size.width * 20) / 100 } else { 0 };
+    let has_images = !inline_images && !no_images && document_has_images(&current_file.document);
+    let image_sidebar_width = if has_images { (size.width * 30) / 100 } else { 0 };
+    let layout_width = size.width.saturating_sub(file_sidebar_width + image_sidebar_width);
+    let viewport = Viewport::new(layout_width, size.height.saturating_sub(1));
+
+    let mut tree = layout_document(&current_file.document, theme, viewport, inline_images);
+    if no_images {
+        tree.images.clear();
+    }
+
+    Ok((viewport, tree))
 }
 
 enum Action {

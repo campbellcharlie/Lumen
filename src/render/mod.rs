@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color as RatatuiColor, Modifier, Style},
     text::{Span, Text as RatatuiText},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
     Terminal as RatatuiTerminal,
 };
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
@@ -44,38 +44,70 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
 }
 
 /// Render layout tree to terminal
-pub fn render(terminal: &mut Terminal, tree: &LayoutTree, theme: &Theme, show_help: bool, search_state: &SearchState) -> io::Result<()> {
+pub fn render(
+    terminal: &mut Terminal,
+    tree: &LayoutTree,
+    theme: &Theme,
+    show_help: bool,
+    search_state: &SearchState,
+    file_manager: &crate::FileManager,
+    show_file_sidebar: bool,
+    file_jump_mode: bool,
+    file_jump_buffer: &str,
+) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
 
-        // Split screen if images are present
-        let (content_area, sidebar_area) = if !tree.images.is_empty() {
+        // Calculate layout areas
+        let (file_sidebar_area, remaining_area) = if show_file_sidebar {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(70),  // Main content
-                    Constraint::Percentage(30),  // Image sidebar
+                    Constraint::Percentage(20),  // File sidebar
+                    Constraint::Percentage(80),  // Content + images
                 ])
                 .split(area);
+            (Some(chunks[0]), chunks[1])
+        } else {
+            (None, area)
+        };
+
+        // Split remaining area for content and images
+        let (content_area, image_sidebar_area) = if !tree.images.is_empty() {
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(70),  // Main content (of remaining area)
+                    Constraint::Percentage(30),  // Image sidebar
+                ])
+                .split(remaining_area);
             (chunks[0], Some(chunks[1]))
         } else {
-            (area, None)
+            (remaining_area, None)
         };
 
         // Render document starting from scroll position
         let scroll_y = tree.viewport.scroll_y;
 
+        // Calculate X offset for content (to account for file sidebar)
+        let content_x_offset = content_area.x;
+
         for node in &tree.root.children {
-            render_node(frame, node, theme, scroll_y, content_area, search_state);
+            render_node(frame, node, theme, scroll_y, content_area, search_state, content_x_offset);
+        }
+
+        // Render file sidebar if present
+        if let Some(file_sidebar) = file_sidebar_area {
+            render_file_sidebar(frame, file_manager, file_sidebar, theme);
         }
 
         // Render images in sidebar if present
-        if let Some(sidebar) = sidebar_area {
-            render_image_sidebar(frame, &tree.images, scroll_y, sidebar, theme);
+        if let Some(image_sidebar) = image_sidebar_area {
+            render_image_sidebar(frame, &tree.images, scroll_y, image_sidebar, theme);
         }
 
         // Render status bar (use full area width)
-        render_status_bar(frame, tree, area, search_state);
+        render_status_bar(frame, tree, area, search_state, file_jump_mode, file_jump_buffer);
 
         // Render help menu if active
         if show_help {
@@ -92,6 +124,7 @@ fn render_node(
     scroll_y: u16,
     area: ratatui::layout::Rect,
     search_state: &SearchState,
+    x_offset: u16,
 ) {
     // Calculate display position
     let display_y = node.rect.y.saturating_sub(scroll_y);
@@ -123,32 +156,35 @@ fn render_node(
 
     match &node.element {
         LayoutElement::Heading { level, text } => {
-            render_heading(frame, node, *level, text, theme, display_y, area);
+            render_heading(frame, node, *level, text, theme, display_y, area, x_offset);
         }
         LayoutElement::Paragraph { lines } => {
-            render_paragraph(frame, lines, theme, node.rect.x, display_y, area, node.rect.y, scroll_y, search_state);
+            render_paragraph(frame, lines, theme, node.rect.x + x_offset, display_y, area, node.rect.y, scroll_y, search_state);
             // Render children (e.g., inline images)
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::CodeBlock { lang, lines } => {
-            render_code_block(frame, lang, lines, theme, node.rect.x, display_y, node.rect.width, area, node.rect.y, scroll_y);
+            render_code_block(frame, lang, lines, theme, node.rect.x + x_offset, display_y, node.rect.width, area, node.rect.y, scroll_y);
         }
         LayoutElement::List { .. } => {
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::ListItem { marker, .. } => {
             // Render marker with style
             let marker_style = Style::default().fg(to_ratatui_color(theme.blocks.list.marker_color));
 
-            // Render the marker as-is (includes trailing space)
+            // Calculate display width (not byte length)
+            // The bullet "•" is 3 bytes but displays as 1 char width
+            let marker_display_width = marker.chars().count() as u16;
+
             let marker_area = ratatui::layout::Rect {
-                x: node.rect.x,
+                x: node.rect.x + x_offset,
                 y: display_y,
-                width: marker.len() as u16,
+                width: marker_display_width,
                 height: 1,
             };
 
@@ -159,7 +195,7 @@ fn render_node(
 
             // Render children - they are positioned by the layout
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::BlockQuote => {
@@ -170,7 +206,7 @@ fn render_node(
             for i in 0..border_height {
                 let border_line = Span::styled("│", border_style);
                 let border_area = ratatui::layout::Rect {
-                    x: node.rect.x,
+                    x: node.rect.x + x_offset,
                     y: display_y + i,
                     width: 1,
                     height: 1,
@@ -180,7 +216,7 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::Callout { kind } => {
@@ -218,7 +254,7 @@ fn render_node(
                     let bg_line = " ".repeat(node.rect.width as usize);
                     let bg_span = Span::styled(bg_line, bg_style);
                     let bg_line_area = ratatui::layout::Rect {
-                        x: node.rect.x,
+                        x: node.rect.x + x_offset,
                         y: visible_start_y + i,
                         width: node.rect.width,
                         height: 1,
@@ -232,7 +268,7 @@ fn render_node(
             for i in 0..visible_height {
                 let border_line = Span::styled("│", border_style);
                 let border_area = ratatui::layout::Rect {
-                    x: node.rect.x,
+                    x: node.rect.x + x_offset,
                     y: visible_start_y + i,
                     width: 1,
                     height: 1,
@@ -247,7 +283,7 @@ fn render_node(
                     Style::default().fg(to_ratatui_color(callout_style.color))
                 );
                 let icon_area = ratatui::layout::Rect {
-                    x: node.rect.x,
+                    x: node.rect.x + x_offset,
                     y: display_y,
                     width: 2,
                     height: 1,
@@ -257,7 +293,7 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::Table { .. } => {
@@ -265,10 +301,10 @@ fn render_node(
             let border_color = theme.colors.foreground;
             let border_style = Style::default().fg(to_ratatui_color(border_color));
 
-            // Get column positions from first row
+            // Get column positions from first row (adjusted for offset)
             let column_positions: Vec<u16> = if let Some(first_row) = node.children.first() {
                 if let LayoutElement::TableRow { .. } = first_row.element {
-                    first_row.children.iter().map(|cell| cell.rect.x).collect()
+                    first_row.children.iter().map(|cell| cell.rect.x + x_offset).collect()
                 } else {
                     vec![]
                 }
@@ -276,47 +312,12 @@ fn render_node(
                 vec![]
             };
 
-            let table_right = node.rect.x + node.rect.width - 1;
+            let table_right = node.rect.x + x_offset + node.rect.width - 1;
 
-            // Draw top border
-            if display_y < area.height {
-                // Build top border line segment by segment
-                let mut top_line = String::new();
-
-                // Start with top-left corner
-                top_line.push_str(border_chars.top_left);
-
-                // For each column, add horizontal line and then junction/corner
-                for window in column_positions.windows(2) {
-                    let segment_width = (window[1] - window[0] - 1) as usize;
-                    top_line.push_str(&border_chars.horizontal.repeat(segment_width));
-                    top_line.push_str(border_chars.t_down);
-                }
-
-                // Add final segment to right edge
-                if let Some(&last_col) = column_positions.last() {
-                    let final_width = (table_right - last_col) as usize;
-                    top_line.push_str(&border_chars.horizontal.repeat(final_width));
-                }
-
-                // End with top-right corner
-                top_line.push_str(border_chars.top_right);
-
-                let top_area = ratatui::layout::Rect {
-                    x: node.rect.x,
-                    y: display_y,
-                    width: node.rect.width,
-                    height: 1,
-                };
-                frame.render_widget(
-                    Paragraph::new(RatatuiText::from(Span::styled(top_line, border_style))),
-                    top_area
-                );
-            }
-
-            // Render table rows
+            // Render table rows first
+            // (top border will be drawn after to avoid being overwritten by vertical bars)
             for (i, child) in node.children.iter().enumerate() {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
 
                 // Draw row separator or bottom border
                 let row_bottom_y = child.rect.y + child.rect.height;
@@ -329,20 +330,28 @@ fn render_node(
                     if sep_display_y < area.height {
                         // Build separator line segment by segment
                         let mut sep_line = String::new();
+                        let table_left = node.rect.x + x_offset;
 
                         if is_last_row {
                             // Bottom border
                             sep_line.push_str(border_chars.bottom_left);
 
-                            for window in column_positions.windows(2) {
-                                let segment_width = (window[1] - window[0] - 1) as usize;
+                            // For each column position, add segment and T-up junction
+                            for i in 0..column_positions.len() {
+                                let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                                let end_x = column_positions[i];
+                                let segment_width = (end_x - start_x - 1).max(0) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
                                 sep_line.push_str(border_chars.t_up);
                             }
 
+                            // Final segment to right edge (minus 1 for corner)
                             if let Some(&last_col) = column_positions.last() {
-                                let final_width = (table_right - last_col) as usize;
+                                let final_width = (table_right - last_col - 1).max(0) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(final_width));
+                            } else {
+                                let full_width = (table_right - table_left - 1).max(0) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(full_width));
                             }
 
                             sep_line.push_str(border_chars.bottom_right);
@@ -350,24 +359,31 @@ fn render_node(
                             // Middle row separator
                             sep_line.push_str(border_chars.t_right);
 
-                            for window in column_positions.windows(2) {
-                                let segment_width = (window[1] - window[0] - 1) as usize;
+                            // For each column position, add segment and cross junction
+                            for i in 0..column_positions.len() {
+                                let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                                let end_x = column_positions[i];
+                                let segment_width = (end_x - start_x - 1).max(0) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(segment_width));
                                 sep_line.push_str(border_chars.cross);
                             }
 
+                            // Final segment to right edge (minus 1 for t_left junction)
                             if let Some(&last_col) = column_positions.last() {
-                                let final_width = (table_right - last_col) as usize;
+                                let final_width = (table_right - last_col - 1).max(0) as usize;
                                 sep_line.push_str(&border_chars.horizontal.repeat(final_width));
+                            } else {
+                                let full_width = (table_right - table_left - 1).max(0) as usize;
+                                sep_line.push_str(&border_chars.horizontal.repeat(full_width));
                             }
 
                             sep_line.push_str(border_chars.t_left);
                         }
 
                         let sep_area = ratatui::layout::Rect {
-                            x: node.rect.x,
+                            x: table_left,
                             y: sep_display_y,
-                            width: node.rect.width,
+                            width: (table_right - table_left + 1) as u16, // Full table width
                             height: 1,
                         };
                         frame.render_widget(
@@ -377,6 +393,50 @@ fn render_node(
                     }
                 }
             }
+
+            // Draw top border AFTER rows to avoid being overwritten
+            if display_y < area.height {
+                // Build top border line segment by segment
+                let mut top_line = String::new();
+
+                let table_left = node.rect.x + x_offset;
+
+                // Start with top-left corner
+                top_line.push_str(border_chars.top_left);
+
+                // For each adjacent pair of column positions, add horizontal segment and T-junction
+                for i in 0..column_positions.len() {
+                    let start_x = if i == 0 { table_left } else { column_positions[i-1] };
+                    let end_x = column_positions[i];
+                    let segment_width = (end_x - start_x - 1).max(0) as usize;
+                    top_line.push_str(&border_chars.horizontal.repeat(segment_width));
+                    top_line.push_str(border_chars.t_down);
+                }
+
+                // Add final segment from last column to right edge (minus 1 for corner)
+                if let Some(&last_col) = column_positions.last() {
+                    let final_width = (table_right - last_col - 1).max(0) as usize;
+                    top_line.push_str(&border_chars.horizontal.repeat(final_width));
+                } else {
+                    // No columns, just fill the space (minus 2 for both corners)
+                    let full_width = (table_right - table_left - 1).max(0) as usize;
+                    top_line.push_str(&border_chars.horizontal.repeat(full_width));
+                }
+
+                // End with top-right corner
+                top_line.push_str(border_chars.top_right);
+
+                let top_area = ratatui::layout::Rect {
+                    x: table_left,
+                    y: display_y,
+                    width: (table_right - table_left + 1) as u16, // Full table width
+                    height: 1,
+                };
+                frame.render_widget(
+                    Paragraph::new(RatatuiText::from(Span::styled(top_line, border_style))),
+                    top_area
+                );
+            }
         }
         LayoutElement::TableRow { is_header: _ } => {
             let border_chars = get_border_chars(theme.blocks.table.border_style);
@@ -385,15 +445,15 @@ fn render_node(
 
             // Render cell content first
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
 
-            // Collect column X positions
-            let column_positions: Vec<u16> = node.children.iter().map(|cell| cell.rect.x).collect();
+            // Collect column X positions (adjusted for offset)
+            let column_positions: Vec<u16> = node.children.iter().map(|cell| cell.rect.x + x_offset).collect();
             let table_right = if let Some(last_cell) = node.children.last() {
-                last_cell.rect.x + last_cell.rect.width - 1
+                last_cell.rect.x + x_offset + last_cell.rect.width - 1
             } else {
-                node.rect.x + node.rect.width - 1
+                node.rect.x + x_offset + node.rect.width - 1
             };
 
             // Draw vertical borders for the entire row
@@ -435,18 +495,18 @@ fn render_node(
         LayoutElement::TableCell => {
             // Just render cell content - borders handled by TableRow
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
         LayoutElement::HorizontalRule => {
             // Use the content area width, not the full layout width
             // (important when sidebar is present)
-            let hr_width = area.width.saturating_sub(node.rect.x);
+            let hr_width = area.width.saturating_sub(node.rect.x + x_offset);
             let hr = "─".repeat(hr_width as usize);
             let hr_text = RatatuiText::from(hr);
 
             let hr_area = ratatui::layout::Rect {
-                x: node.rect.x,
+                x: node.rect.x + x_offset,
                 y: display_y,
                 width: hr_width,
                 height: 1,
@@ -456,12 +516,12 @@ fn render_node(
         }
         LayoutElement::Image { path, alt_text } => {
             // Render inline image
-            render_inline_image(frame, path, alt_text, node.rect.x, display_y, node.rect.width, node.rect.height, area);
+            render_inline_image(frame, path, alt_text, node.rect.x + x_offset, display_y, node.rect.width, node.rect.height, area);
         }
         _ => {
             // Render children for other types
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state);
+                render_node(frame, child, theme, scroll_y, area, search_state, x_offset);
             }
         }
     }
@@ -475,6 +535,7 @@ fn render_heading(
     theme: &Theme,
     display_y: u16,
     _area: ratatui::layout::Rect,
+    x_offset: u16,
 ) {
     let heading_style = match level {
         1 => &theme.blocks.heading.h1,
@@ -500,7 +561,7 @@ fn render_heading(
     let para = Paragraph::new(RatatuiText::from(span));
 
     let heading_area = ratatui::layout::Rect {
-        x: node.rect.x,
+        x: node.rect.x + x_offset,
         y: display_y,
         width: node.rect.width,
         height: 1,
@@ -774,7 +835,35 @@ fn render_status_bar(
     tree: &LayoutTree,
     area: ratatui::layout::Rect,
     search_state: &SearchState,
+    file_jump_mode: bool,
+    file_jump_buffer: &str,
 ) {
+    // If file jump mode is active, show file jump prompt
+    if file_jump_mode {
+        let prompt_text = if file_jump_buffer.is_empty() {
+            ":".to_string()
+        } else {
+            format!(":{}", file_jump_buffer)
+        };
+
+        let prompt_span = Span::styled(
+            format!("{} (Enter file number)", prompt_text),
+            Style::default()
+                .bg(RatatuiColor::Blue)
+                .fg(RatatuiColor::White)
+        );
+
+        let prompt_bar_area = ratatui::layout::Rect {
+            x: 0,
+            y: area.height.saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+
+        frame.render_widget(Paragraph::new(prompt_span), prompt_bar_area);
+        return;
+    }
+
     // If search is active, show search bar instead
     if search_state.active {
         let search_text = if search_state.needle.is_empty() {
@@ -896,7 +985,23 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         "  n            Jump to next heading",
         "  p            Jump to previous heading",
         "",
+        "File Navigation:",
+        "  Tab          Switch to next file",
+        "  Shift+Tab    Switch to previous file",
+        "  1-9          Jump to file 1-9",
+        "  :N           Jump to file N (any number)",
+        "",
+        "Search:",
+        "  /            Start search",
+        "  n            Next match (when searching)",
+        "  N            Previous match",
+        "  Esc          Clear search results",
+        "",
         "Other:",
+        "  t            Cycle through themes",
+        "  f            Toggle file sidebar",
+        "  r            Reload current file",
+        "  m            Toggle mouse mode",
         "  h            Toggle this help menu",
         "  q / Esc      Quit",
         "",
@@ -945,8 +1050,10 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
 
     let paragraph = Paragraph::new(text)
         .block(block)
-        .style(Style::default().fg(RatatuiColor::White));
+        .style(Style::default().fg(RatatuiColor::White).bg(RatatuiColor::Black));
 
+    // Clear the area first to prevent transparency
+    frame.render_widget(Clear, help_area);
     frame.render_widget(paragraph, help_area);
 }
 
@@ -1012,6 +1119,84 @@ fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme) -> Span<'a
 
     // Default: render text without escape sequences
     Span::styled(segment.text.as_str(), style)
+}
+
+fn render_file_sidebar(
+    frame: &mut ratatui::Frame,
+    file_manager: &crate::FileManager,
+    area: ratatui::layout::Rect,
+    _theme: &Theme,
+) {
+    // Draw sidebar border on the right side
+    let border_style = Style::default().fg(RatatuiColor::DarkGray);
+    for y in 0..area.height {
+        let border_span = Span::styled("│", border_style);
+        let border_area = ratatui::layout::Rect {
+            x: area.x + area.width - 1,
+            y: area.y + y,
+            width: 1,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(RatatuiText::from(border_span)), border_area);
+    }
+
+    // Render title
+    let title_span = Span::styled(
+        " Open Files ",
+        Style::default()
+            .fg(RatatuiColor::Cyan)
+            .add_modifier(Modifier::BOLD)
+    );
+    let title_area = ratatui::layout::Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width - 1,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(RatatuiText::from(title_span)), title_area);
+
+    // Render file list starting at y=2
+    let mut current_y = 2;
+    for (i, file) in file_manager.files.iter().enumerate() {
+        if current_y >= area.height {
+            break;
+        }
+
+        let is_current = i == file_manager.current_index;
+
+        // Create file entry: number, indicator, filename
+        let number = format!("{}.", i + 1);
+        let indicator = if is_current { "▶ " } else { "  " };
+
+        // Truncate filename if too long
+        let max_name_len = (area.width as usize).saturating_sub(6);
+        let display_name = if file.name.len() > max_name_len {
+            format!("{}...", &file.name[..max_name_len.saturating_sub(3)])
+        } else {
+            file.name.clone()
+        };
+
+        let file_text = format!(" {} {}{}", number, indicator, display_name);
+
+        let file_style = if is_current {
+            Style::default()
+                .fg(RatatuiColor::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(RatatuiColor::White)
+        };
+
+        let file_span = Span::styled(file_text, file_style);
+        let file_area = ratatui::layout::Rect {
+            x: area.x,
+            y: area.y + current_y,
+            width: area.width - 1,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(RatatuiText::from(file_span)), file_area);
+
+        current_y += 1;
+    }
 }
 
 fn render_image_sidebar(
