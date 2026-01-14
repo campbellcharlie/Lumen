@@ -543,26 +543,32 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
             let extracted_label = if let Block::List { items: nested_items, .. } = &mut item.content[0] {
                 if let Some(first_nested) = nested_items.first_mut() {
                     if let Some(Block::Paragraph { content }) = first_nested.content.first_mut() {
-                        // Check if paragraph starts with Strong followed by other content
+                        // Check if paragraph starts with multiple inline elements (indicating merge)
                         if content.len() >= 2 {
-                            if let Inline::Strong(strong_content) = &content[0] {
-                                // Check if strong text ends with ":"
-                                let ends_with_colon = strong_content.iter().any(|inline| {
-                                    if let Inline::Text(text) = inline {
-                                        text.trim().ends_with(':')
-                                    } else {
-                                        false
-                                    }
-                                });
+                            match &content[0] {
+                                // Case 1: Strong text ending with ":" (e.g., "**Research:**")
+                                Inline::Strong(strong_content) => {
+                                    let ends_with_colon = strong_content.iter().any(|inline| {
+                                        if let Inline::Text(text) = inline {
+                                            text.trim().ends_with(':')
+                                        } else {
+                                            false
+                                        }
+                                    });
 
-                                if ends_with_colon {
-                                    // Extract the Strong prefix
-                                    Some(content.remove(0))
-                                } else {
-                                    None
+                                    if ends_with_colon {
+                                        Some(content.remove(0))
+                                    } else {
+                                        None
+                                    }
                                 }
-                            } else {
-                                None
+                                // Case 2: Link element (e.g., "[Getting Started](#link)")
+                                // This handles TOC-style nested lists where parent link gets merged
+                                Inline::Link { .. } => {
+                                    // Extract the first link as the parent's content
+                                    Some(content.remove(0))
+                                }
+                                _ => None,
                             }
                         } else {
                             None
