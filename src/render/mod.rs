@@ -401,12 +401,14 @@ fn render_node(
             let border_color = theme.colors.foreground;
             let border_style = Style::default().fg(to_ratatui_color(border_color));
 
-            // Get column positions from first row (adjusted for offset)
+            // Get column separator positions from first row (adjusted for offset)
+            // Skip first cell since we only need internal separator positions for T-junctions
             let column_positions: Vec<u16> = if let Some(first_row) = node.children.first() {
                 if let LayoutElement::TableRow { .. } = first_row.element {
                     first_row
                         .children
                         .iter()
+                        .skip(1)  // Skip first cell - we only want internal separators
                         .map(|cell| cell.rect.x + x_offset)
                         .collect()
                 } else {
