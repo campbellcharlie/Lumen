@@ -472,13 +472,14 @@ fn render_node(
 
             // Get column separator positions from first row (adjusted for offset)
             // Skip first cell since we only need internal separator positions for T-junctions
+            // Clamp to buffer bounds to prevent out-of-bounds rendering
             let column_positions: Vec<u16> = if let Some(first_row) = node.children.first() {
                 if let LayoutElement::TableRow { .. } = first_row.element {
                     first_row
                         .children
                         .iter()
                         .skip(1) // Skip first cell - we only want internal separators
-                        .map(|cell| cell.rect.x + x_offset)
+                        .map(|cell| (cell.rect.x + x_offset).min(area.x + area.width - 1))
                         .collect()
                 } else {
                     vec![]
@@ -487,7 +488,10 @@ fn render_node(
                 vec![]
             };
 
-            let table_right = node.rect.x + x_offset + node.rect.width - 1;
+            // Clamp table_right to not exceed the buffer width
+            let table_right = (node.rect.x + x_offset + node.rect.width)
+                .saturating_sub(1)
+                .min(area.x + area.width - 1);
 
             // Render table rows first
             // (top border will be drawn after to avoid being overwritten by vertical bars)
@@ -657,15 +661,21 @@ fn render_node(
             }
 
             // Collect column X positions (adjusted for offset)
+            // Clamp to buffer bounds to prevent out-of-bounds rendering
             let column_positions: Vec<u16> = node
                 .children
                 .iter()
-                .map(|cell| cell.rect.x + x_offset)
+                .map(|cell| (cell.rect.x + x_offset).min(area.x + area.width - 1))
                 .collect();
+            // Clamp table_right to not exceed the buffer width
             let table_right = if let Some(last_cell) = node.children.last() {
-                last_cell.rect.x + x_offset + last_cell.rect.width - 1
+                (last_cell.rect.x + x_offset + last_cell.rect.width)
+                    .saturating_sub(1)
+                    .min(area.x + area.width - 1)
             } else {
-                node.rect.x + x_offset + node.rect.width - 1
+                (node.rect.x + x_offset + node.rect.width)
+                    .saturating_sub(1)
+                    .min(area.x + area.width - 1)
             };
 
             // Draw vertical borders for the entire row

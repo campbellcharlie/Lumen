@@ -222,7 +222,7 @@ fn layout_text_content(
     let words: Vec<&str> = text.split_whitespace().collect();
 
     for (i, word) in words.iter().enumerate() {
-        let word_len = word.len() as u16;
+        let word_len = word.chars().count() as u16;
         let need_space = i > 0 || *current_width > 0;
         let space_len = if need_space { 1 } else { 0 };
 
@@ -241,21 +241,31 @@ fn layout_text_content(
 
         // Handle very long words that don't fit even on empty line
         if word_len > max_width {
-            // Break word into chunks
+            // Break word into chunks at character boundaries (not byte boundaries)
             let mut remaining = *word;
             while !remaining.is_empty() {
-                let chunk_len = (max_width - *current_width).min(remaining.len() as u16) as usize;
-                if chunk_len == 0 {
+                let available_width = (max_width - *current_width) as usize;
+                if available_width == 0 {
                     // Current line is full, wrap
                     lines.push(std::mem::take(current_line));
                     *current_width = 0;
                     continue;
                 }
 
-                let chunk = &remaining[..chunk_len];
+                // Take up to available_width characters (not bytes)
+                let char_count = remaining.chars().count().min(available_width);
+
+                // Find the byte index for char_count characters
+                let byte_index = remaining
+                    .char_indices()
+                    .nth(char_count)
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(remaining.len());
+
+                let chunk = &remaining[..byte_index];
                 current_line.add_segment_with_link(chunk.to_string(), style, link_url.clone());
-                *current_width += chunk_len as u16;
-                remaining = &remaining[chunk_len..];
+                *current_width += char_count as u16;
+                remaining = &remaining[byte_index..];
 
                 if !remaining.is_empty() {
                     // More to go, wrap to next line
@@ -310,6 +320,44 @@ mod tests {
 
         let (lines, _) = layout_text(&inlines, 10, &theme, 0, &mut images, false);
         assert!(lines.len() > 1, "Long word should break across lines");
+    }
+
+    #[test]
+    fn test_utf8_multibyte_word_breaking() {
+        let theme = theme::docs_theme();
+        // Test with multi-byte UTF-8 characters (â is 2 bytes, café is 5 bytes but 4 chars)
+        let inlines = vec![Inline::Text("âfaçade".to_string())];
+        let mut images = Vec::new();
+
+        // Force word breaking with narrow width
+        let (lines, _) = layout_text(&inlines, 3, &theme, 0, &mut images, false);
+        assert!(lines.len() > 1, "UTF-8 word should break across lines");
+
+        // Verify no panic and characters are preserved
+        let reconstructed: String = lines
+            .iter()
+            .flat_map(|line| line.segments.iter().map(|seg| seg.text.as_str()))
+            .collect();
+        assert_eq!(reconstructed, "âfaçade", "UTF-8 characters should be preserved");
+    }
+
+    #[test]
+    fn test_utf8_emoji_word_breaking() {
+        let theme = theme::docs_theme();
+        // Test with emoji (4-byte UTF-8 characters)
+        let inlines = vec![Inline::Text("🚀🎉test".to_string())];
+        let mut images = Vec::new();
+
+        // Force word breaking
+        let (lines, _) = layout_text(&inlines, 2, &theme, 0, &mut images, false);
+        assert!(lines.len() > 1, "Emoji word should break across lines");
+
+        // Verify emojis are preserved
+        let reconstructed: String = lines
+            .iter()
+            .flat_map(|line| line.segments.iter().map(|seg| seg.text.as_str()))
+            .collect();
+        assert_eq!(reconstructed, "🚀🎉test", "Emojis should be preserved");
     }
 
     #[test]
