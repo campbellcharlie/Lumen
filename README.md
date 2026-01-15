@@ -99,6 +99,31 @@ AI coding tools (Claude, Gemini, Codex) generate complex markdown with deep nest
 
 ---
 
+## Screenshots
+
+### Headings & Text Formatting
+![Headings and Text Formatting](screenshots/01-headings-and-text-formatting.png)
+
+### Lists & Tasks
+![Lists and Tasks](screenshots/02-lists-and-tasks.png)
+
+### Links & Tables
+![Links and Tables](screenshots/03-links-and-tables.png)
+
+### Wide Tables & Code Blocks
+![Wide Tables and Code Blocks](screenshots/04-wide-tables-and-code-blocks.png)
+
+### Blockquotes & Deep Nesting
+![Blockquotes and Deep Nesting](screenshots/05-blockquotes-and-deep-nesting.png)
+
+### Mixed Content
+![Mixed Content](screenshots/06-mixed-content-and-rules.png)
+
+### Help Menu
+![Keyboard Shortcuts](screenshots/07-help-menu-keyboard-shortcuts.png)
+
+---
+
 ## Features
 
 ### Markdown Support
