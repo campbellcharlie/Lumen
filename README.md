@@ -36,9 +36,17 @@ lumen *.md
 
 ### Available Themes
 
+**Built-in themes:**
 - `docs` — Clean, documentation-focused (default)
 - `neon` — Vibrant, modern with bright colors
 - `minimal` — Low visual noise, ASCII fallbacks
+- `dracula` — Dark purple with vibrant accents
+- `monokai` — Classic Sublime Text inspired
+- `solarized` — Low-contrast, easy on the eyes
+- `gruvbox` — Retro groove with warm colors
+- `nord` — Arctic, blue-ish coldness
+- `tokyo-night` — Modern dark Tokyo-inspired
+- `catppuccin` — Soothing pastel colors
 
 ---
 
@@ -99,7 +107,7 @@ AI coding tools (Claude, Gemini, Codex) generate complex markdown with deep nest
 - Proper tight list handling for correct structure
 
 ### Theming
-- 3 built-in themes: Docs (default), Neon, Minimal
+- 10 built-in themes: Docs (default), Neon, Minimal, Dracula, Monokai, Solarized, Gruvbox, Nord, Tokyo Night, Catppuccin
 - Color palettes with RGB/ANSI fallbacks
 - Multiple border styles: Single, Double, Rounded, Heavy, ASCII
 - Typography and spacing configuration via YAML
