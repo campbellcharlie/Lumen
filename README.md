@@ -24,6 +24,9 @@ cargo build --release
 # View a single file
 lumen README.md
 
+# Try the feature demo
+lumen examples/markdown_demo.md
+
 # View AI-generated responses (use Tab to switch between them)
 lumen claude_response.md gemini_output.md codex_analysis.md
 
