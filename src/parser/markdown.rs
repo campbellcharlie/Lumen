@@ -153,7 +153,11 @@ impl MarkdownConverter {
                 // If we're starting a list inside a ListItem and have accumulated text,
                 // wrap it in a paragraph first. This handles tight lists where pulldown-cmark
                 // doesn't emit paragraph boundaries.
-                if self.block_stack.iter().any(|ctx| matches!(ctx, BlockContext::ListItem { .. })) {
+                if self
+                    .block_stack
+                    .iter()
+                    .any(|ctx| matches!(ctx, BlockContext::ListItem { .. }))
+                {
                     let content = std::mem::take(&mut self.current_inlines);
                     if !content.is_empty() {
                         self.push_block(Block::Paragraph { content });
@@ -551,7 +555,11 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
         // Check if this item has only one child block, and it's a List
         if item.content.len() == 1 {
             // First, check if we need to extract a label and get the inline content
-            let extracted_label = if let Block::List { items: nested_items, .. } = &mut item.content[0] {
+            let extracted_label = if let Block::List {
+                items: nested_items,
+                ..
+            } = &mut item.content[0]
+            {
                 if let Some(first_nested) = nested_items.first_mut() {
                     if let Some(Block::Paragraph { content }) = first_nested.content.first_mut() {
                         // Check if paragraph starts with multiple inline elements (indicating merge)
@@ -588,7 +596,11 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
                 );
 
                 // Clean up empty paragraphs in the first nested item
-                if let Block::List { items: nested_items, .. } = &mut item.content[1] {
+                if let Block::List {
+                    items: nested_items,
+                    ..
+                } = &mut item.content[1]
+                {
                     if let Some(first_nested) = nested_items.first_mut() {
                         if let Some(Block::Paragraph { content }) = first_nested.content.first() {
                             if content.is_empty() {
@@ -602,7 +614,11 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
 
         // Recursively fix any nested lists in this item's content
         for block in &mut item.content {
-            if let Block::List { items: nested_items, .. } = block {
+            if let Block::List {
+                items: nested_items,
+                ..
+            } = block
+            {
                 fix_merged_list_labels(nested_items);
             }
         }
@@ -612,12 +628,16 @@ fn fix_merged_list_labels(items: &mut Vec<ListItem>) {
     // This removes unnecessary nesting levels created by pulldown-cmark
     let mut i = 0;
     while i < items.len() {
-        let should_flatten = items[i].content.len() == 1
-            && matches!(items[i].content[0], Block::List { .. });
+        let should_flatten =
+            items[i].content.len() == 1 && matches!(items[i].content[0], Block::List { .. });
 
         if should_flatten {
             // Extract the nested list
-            if let Block::List { items: mut nested_items, .. } = items.remove(i).content.into_iter().next().unwrap() {
+            if let Block::List {
+                items: mut nested_items,
+                ..
+            } = items.remove(i).content.into_iter().next().unwrap()
+            {
                 // Recursively flatten the nested items before inserting
                 fix_merged_list_labels(&mut nested_items);
 

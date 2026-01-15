@@ -156,20 +156,12 @@ fn layout_list_item_blocks(
     nodes
 }
 
-fn layout_block(
-    block: &Block,
-    x: u16,
-    y: u16,
-    width: u16,
-    ctx: &mut LayoutContext,
-) -> LayoutNode {
+fn layout_block(block: &Block, x: u16, y: u16, width: u16, ctx: &mut LayoutContext) -> LayoutNode {
     *ctx.node_counter += 1;
     let id = *ctx.node_counter;
 
     match block {
-        Block::Heading { level, content } => {
-            layout_heading(*level, content, x, y, width, id, ctx)
-        }
+        Block::Heading { level, content } => layout_heading(*level, content, x, y, width, id, ctx),
         Block::Paragraph { content } => layout_paragraph(content, x, y, width, id, ctx),
         Block::CodeBlock { lang, code } => {
             layout_code_block(lang.as_deref(), code, x, y, width, id, ctx)
@@ -489,8 +481,15 @@ fn layout_table(
     // Layout header row
     if !headers.is_empty() {
         *ctx.node_counter += 1;
-        let row_node =
-            layout_table_row(headers, &column_widths, x, current_y, *ctx.node_counter, true, ctx);
+        let row_node = layout_table_row(
+            headers,
+            &column_widths,
+            x,
+            current_y,
+            *ctx.node_counter,
+            true,
+            ctx,
+        );
         current_y += row_node.rect.height;
         children.push(row_node);
     }
@@ -498,8 +497,15 @@ fn layout_table(
     // Layout data rows
     for row in rows {
         *ctx.node_counter += 1;
-        let row_node =
-            layout_table_row(row, &column_widths, x, current_y, *ctx.node_counter, false, ctx);
+        let row_node = layout_table_row(
+            row,
+            &column_widths,
+            x,
+            current_y,
+            *ctx.node_counter,
+            false,
+            ctx,
+        );
         current_y += row_node.rect.height;
         children.push(row_node);
     }

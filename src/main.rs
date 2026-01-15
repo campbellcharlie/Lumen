@@ -384,8 +384,12 @@ fn run_interactive(
                             needs_render = true;
                         } else if key.code == KeyCode::Char('a') {
                             // Cycle through anchor links
-                            let link_count = tree.hit_regions.iter()
-                                .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                            let link_count = tree
+                                .hit_regions
+                                .iter()
+                                .filter(|r| {
+                                    matches!(r.element, lumen::layout::HitElement::Link { .. })
+                                })
                                 .count();
 
                             if link_count > 0 {
@@ -396,8 +400,15 @@ fn run_interactive(
 
                                 // Scroll to make selected link visible
                                 if let Some(link_idx) = selected_link_index {
-                                    let link_regions: Vec<_> = tree.hit_regions.iter()
-                                        .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                                    let link_regions: Vec<_> = tree
+                                        .hit_regions
+                                        .iter()
+                                        .filter(|r| {
+                                            matches!(
+                                                r.element,
+                                                lumen::layout::HitElement::Link { .. }
+                                            )
+                                        })
                                         .collect();
 
                                     if let Some(region) = link_regions.get(link_idx) {
@@ -412,22 +423,33 @@ fn run_interactive(
                         } else if key.code == KeyCode::Enter && selected_link_index.is_some() {
                             // Follow the selected link
                             if let Some(link_idx) = selected_link_index {
-                                let link_regions: Vec<_> = tree.hit_regions.iter()
-                                    .filter(|r| matches!(r.element, lumen::layout::HitElement::Link { .. }))
+                                let link_regions: Vec<_> = tree
+                                    .hit_regions
+                                    .iter()
+                                    .filter(|r| {
+                                        matches!(r.element, lumen::layout::HitElement::Link { .. })
+                                    })
                                     .collect();
 
                                 if let Some(region) = link_regions.get(link_idx) {
-                                    if let lumen::layout::HitElement::Link { url, .. } = &region.element {
+                                    if let lumen::layout::HitElement::Link { url, .. } =
+                                        &region.element
+                                    {
                                         // Handle internal anchor links
                                         if url.starts_with('#') {
                                             let anchor = &url[1..]; // Remove the '#'
 
                                             // Find the heading with this anchor
                                             for heading_region in &tree.hit_regions {
-                                                if let lumen::layout::HitElement::Heading { id, .. } = &heading_region.element {
+                                                if let lumen::layout::HitElement::Heading {
+                                                    id,
+                                                    ..
+                                                } = &heading_region.element
+                                                {
                                                     if id == anchor {
                                                         // Jump to this heading
-                                                        tree.viewport.scroll_y = heading_region.rect.y;
+                                                        tree.viewport.scroll_y =
+                                                            heading_region.rect.y;
                                                         selected_link_index = None; // Deselect after jump
                                                         needs_render = true;
                                                         break;
@@ -747,7 +769,9 @@ fn handle_mouse(mouse: MouseEvent, tree: &mut LayoutTree) -> bool {
 
                             // Find the heading with this anchor
                             for heading_region in &tree.hit_regions {
-                                if let lumen::layout::HitElement::Heading { id, .. } = &heading_region.element {
+                                if let lumen::layout::HitElement::Heading { id, .. } =
+                                    &heading_region.element
+                                {
                                     if id == anchor {
                                         // Jump to this heading
                                         tree.viewport.scroll_y = heading_region.rect.y;

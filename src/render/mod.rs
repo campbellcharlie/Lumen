@@ -87,7 +87,7 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
 /// let search_state = SearchState::new();
 ///
 /// render(&mut terminal, &tree, &theme, false, &search_state,
-///        &file_manager, false, false, "").unwrap();
+///        &file_manager, false, false, "", None).unwrap();
 /// ```
 pub fn render(
     terminal: &mut Terminal,
@@ -245,7 +245,16 @@ fn render_node(
             );
             // Render children (e.g., inline images)
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::CodeBlock { lang, lines } => {
@@ -264,16 +273,22 @@ fn render_node(
         }
         LayoutElement::List { .. } => {
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::ListItem { marker, .. } => {
             // Check if this is an empty parent (only contains a nested list, no content)
             let is_empty_parent = node.children.len() == 1
-                && matches!(
-                    node.children[0].element,
-                    LayoutElement::List { .. }
-                );
+                && matches!(node.children[0].element, LayoutElement::List { .. });
 
             // Only render marker if this item has actual content (not just a nested list)
             if !is_empty_parent {
@@ -289,7 +304,11 @@ fn render_node(
                 // This allows us to right-align the marker for consistent alignment
                 let allocated_marker_space = if let Some(first_child) = node.children.first() {
                     // Content starts at first_child.rect.x, with 1-space gap after marker
-                    first_child.rect.x.saturating_sub(node.rect.x).saturating_sub(1)
+                    first_child
+                        .rect
+                        .x
+                        .saturating_sub(node.rect.x)
+                        .saturating_sub(1)
                 } else {
                     marker_display_width
                 };
@@ -315,7 +334,16 @@ fn render_node(
 
             // Render children - they are positioned by the layout
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::BlockQuote => {
@@ -336,7 +364,16 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::Callout { kind } => {
@@ -416,7 +453,16 @@ fn render_node(
 
             // Render children
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::Table { .. } => {
@@ -431,7 +477,7 @@ fn render_node(
                     first_row
                         .children
                         .iter()
-                        .skip(1)  // Skip first cell - we only want internal separators
+                        .skip(1) // Skip first cell - we only want internal separators
                         .map(|cell| cell.rect.x + x_offset)
                         .collect()
                 } else {
@@ -446,7 +492,16 @@ fn render_node(
             // Render table rows first
             // (top border will be drawn after to avoid being overwritten by vertical bars)
             for (i, child) in node.children.iter().enumerate() {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
 
                 // Draw row separator or bottom border
                 let row_bottom_y = child.rect.y + child.rect.height;
@@ -589,7 +644,16 @@ fn render_node(
 
             // Render cell content first
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
 
             // Collect column X positions (adjusted for offset)
@@ -649,7 +713,16 @@ fn render_node(
         LayoutElement::TableCell => {
             // Just render cell content - borders handled by TableRow
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
         LayoutElement::HorizontalRule => {
@@ -684,7 +757,16 @@ fn render_node(
         _ => {
             // Render children for other types
             for child in &node.children {
-                render_node(frame, child, theme, scroll_y, area, search_state, x_offset, selected_link_rect);
+                render_node(
+                    frame,
+                    child,
+                    theme,
+                    scroll_y,
+                    area,
+                    search_state,
+                    x_offset,
+                    selected_link_rect,
+                );
             }
         }
     }
@@ -1286,7 +1368,11 @@ fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
     frame.render_widget(paragraph, help_area);
 }
 
-fn text_segment_to_span<'a>(segment: &'a TextSegment, _theme: &Theme, is_selected_link: bool) -> Span<'a> {
+fn text_segment_to_span<'a>(
+    segment: &'a TextSegment,
+    _theme: &Theme,
+    is_selected_link: bool,
+) -> Span<'a> {
     let mut style = Style::default();
 
     if let Some(fg) = segment.style.foreground {
