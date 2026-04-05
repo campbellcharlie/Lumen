@@ -177,12 +177,8 @@ fn main() -> io::Result<()> {
         eprintln!("  lumen README.md neon");
         eprintln!("  lumen README.md --inline-images");
         eprintln!("  lumen README.md --no-images");
-        eprintln!(
-            "  lumen --import-theme https://github.com/folke/tokyonight.nvim"
-        );
-        eprintln!(
-            "  lumen --import-theme https://vimcolorschemes.com/catppuccin/nvim"
-        );
+        eprintln!("  lumen --import-theme https://github.com/folke/tokyonight.nvim");
+        eprintln!("  lumen --import-theme https://vimcolorschemes.com/catppuccin/nvim");
         eprintln!("  lumen --import-theme ./colors/mytheme.vim --name mytheme");
         eprintln!("\nKeyboard shortcuts:");
         eprintln!("  Tab / Shift+Tab       Switch between open files");
@@ -643,10 +639,8 @@ fn run_interactive(
                                 .scroll_to_clamped(old_scroll, tree.document_height());
 
                             // Show theme name briefly
-                            status_message =
-                                Some(format!("Theme: {}", preferences.theme));
-                            status_message_expiry =
-                                Some(Instant::now() + Duration::from_secs(2));
+                            status_message = Some(format!("Theme: {}", preferences.theme));
+                            status_message_expiry = Some(Instant::now() + Duration::from_secs(2));
                             needs_render = true;
                         } else if key.code == KeyCode::Tab {
                             // Save current scroll before switching

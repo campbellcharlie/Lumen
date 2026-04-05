@@ -69,7 +69,10 @@ fn transform_block(block: &mut Block) {
                 }
             }
         }
-        Block::BlockQuote { blocks } | Block::Callout { content: blocks, .. } => {
+        Block::BlockQuote { blocks }
+        | Block::Callout {
+            content: blocks, ..
+        } => {
             for b in blocks {
                 transform_block(b);
             }
@@ -362,8 +365,8 @@ struct NodeLayout {
     col: usize, // layer (column for LR, row for TD)
     #[allow(dead_code)]
     row: usize, // position within layer
-    x: usize,   // canvas x
-    y: usize,   // canvas y
+    x: usize, // canvas x
+    y: usize, // canvas y
     width: usize,
     label: String,
 }
@@ -396,7 +399,10 @@ fn layout_graph(graph: &FlowGraph) -> GraphLayout {
     let mut has_parent = vec![false; n];
 
     for edge in &graph.edges {
-        if let (Some(&from), Some(&to)) = (id_to_idx.get(edge.from.as_str()), id_to_idx.get(edge.to.as_str())) {
+        if let (Some(&from), Some(&to)) = (
+            id_to_idx.get(edge.from.as_str()),
+            id_to_idx.get(edge.to.as_str()),
+        ) {
             children[from].push(to);
             has_parent[to] = true;
         }
@@ -528,7 +534,10 @@ fn layout_graph(graph: &FlowGraph) -> GraphLayout {
         let mut total_width_per_layer: Vec<usize> = vec![0; num_layers];
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
-            let total: usize = layer_nodes.iter().map(|&i| display_widths[i]).sum::<usize>()
+            let total: usize = layer_nodes
+                .iter()
+                .map(|&i| display_widths[i])
+                .sum::<usize>()
                 + layer_nodes.len().saturating_sub(1) * (LAYER_GAP_V + 2);
             total_width_per_layer[layer_idx] = total;
             for &node_idx in layer_nodes {
@@ -688,7 +697,7 @@ impl Canvas {
         }
     }
 
-    fn to_string(&self) -> String {
+    fn render(&self) -> String {
         self.cells
             .iter()
             .map(|row| {
@@ -707,10 +716,7 @@ impl Canvas {
 fn render_graph(graph: &FlowGraph) -> String {
     let layout = layout_graph(graph);
 
-    let mut canvas = Canvas::new(
-        layout.canvas_width.max(1),
-        layout.canvas_height.max(1),
-    );
+    let mut canvas = Canvas::new(layout.canvas_width.max(1), layout.canvas_height.max(1));
 
     // Draw all nodes
     for nl in &layout.nodes {
@@ -739,7 +745,11 @@ fn render_graph(graph: &FlowGraph) -> String {
                     // Same row — straight horizontal arrow
                     if layout.direction == Direction::RL {
                         if to.x + to.width < from.x {
-                            canvas.draw_harrow_rev(to.x + to.width, from.x.saturating_sub(1), from_mid_y);
+                            canvas.draw_harrow_rev(
+                                to.x + to.width,
+                                from.x.saturating_sub(1),
+                                from_mid_y,
+                            );
                         }
                     } else if from_right < to_left {
                         canvas.draw_harrow(from_right, to_left.saturating_sub(1), from_mid_y);
@@ -792,7 +802,11 @@ fn render_graph(graph: &FlowGraph) -> String {
                     // Same column — straight vertical arrow
                     if layout.direction == Direction::BT {
                         if to.y + BOX_HEIGHT < from.y {
-                            canvas.draw_varrow_up(from_mid_x, to.y + BOX_HEIGHT, from.y.saturating_sub(1));
+                            canvas.draw_varrow_up(
+                                from_mid_x,
+                                to.y + BOX_HEIGHT,
+                                from.y.saturating_sub(1),
+                            );
                         }
                     } else if from_bottom < to_top {
                         canvas.draw_varrow(from_mid_x, from_bottom, to_top.saturating_sub(1));
@@ -837,7 +851,7 @@ fn render_graph(graph: &FlowGraph) -> String {
         }
     }
 
-    canvas.to_string()
+    canvas.render()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -936,7 +950,8 @@ mod tests {
 
     #[test]
     fn test_render_output_not_empty() {
-        let input = "graph TD\n    Start[Start] --> Process[Process Data]\n    Process --> End[Done]";
+        let input =
+            "graph TD\n    Start[Start] --> Process[Process Data]\n    Process --> End[Done]";
         let output = render_mermaid(input).unwrap();
         assert!(!output.is_empty());
         // Should contain the labels

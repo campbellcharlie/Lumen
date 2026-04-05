@@ -140,9 +140,7 @@ fn fetch_colorscheme_from_repo(owner: &str, repo: &str) -> Result<(String, Strin
     }
 
     // Fallback: try common name patterns in colors/
-    let base_name = repo
-        .trim_end_matches(".nvim")
-        .trim_end_matches(".vim");
+    let base_name = repo.trim_end_matches(".nvim").trim_end_matches(".vim");
     let common_names = [
         format!("{}.vim", base_name),
         format!("{}.vim", base_name.replace('-', "_")),
@@ -266,7 +264,8 @@ fn parse_vim_colorscheme(content: &str) -> VimColors {
         // Also: highlight[!] GroupName key=value ...
         let line_lower = line.to_lowercase();
         let is_hi = line_lower.starts_with("hi ") || line_lower.starts_with("hi! ");
-        let is_highlight = line_lower.starts_with("highlight ") || line_lower.starts_with("highlight! ");
+        let is_highlight =
+            line_lower.starts_with("highlight ") || line_lower.starts_with("highlight! ");
 
         if is_hi || is_highlight {
             // Skip "hi link" and "hi clear" commands
@@ -372,11 +371,7 @@ fn blend(color: Color, target: Color, factor: f32) -> Color {
 
 /// Build a Lumen theme from parsed vim colorscheme data
 fn build_theme(colors: &VimColors, fallback_name: &str) -> Theme {
-    let name = colors
-        .name
-        .as_deref()
-        .unwrap_or(fallback_name)
-        .to_string();
+    let name = colors.name.as_deref().unwrap_or(fallback_name).to_string();
 
     // Extract base colors with sensible defaults
     let fg = fg_color(colors, "Normal").unwrap_or(Color::Rgb(200, 200, 200));
@@ -669,14 +664,26 @@ hi Visual guibg=#264f78
 
         assert_eq!(theme.name, "mytest");
         // Verify colors were mapped
-        assert!(matches!(theme.colors.foreground, Color::Rgb(0xd4, 0xd4, 0xd4)));
-        assert!(matches!(theme.colors.background, Color::Rgb(0x1e, 0x1e, 0x1e)));
+        assert!(matches!(
+            theme.colors.foreground,
+            Color::Rgb(0xd4, 0xd4, 0xd4)
+        ));
+        assert!(matches!(
+            theme.colors.background,
+            Color::Rgb(0x1e, 0x1e, 0x1e)
+        ));
     }
 
     #[test]
     fn test_hex_to_color() {
-        assert!(matches!(hex_to_color("#ff0000"), Some(Color::Rgb(255, 0, 0))));
-        assert!(matches!(hex_to_color("#00ff00"), Some(Color::Rgb(0, 255, 0))));
+        assert!(matches!(
+            hex_to_color("#ff0000"),
+            Some(Color::Rgb(255, 0, 0))
+        ));
+        assert!(matches!(
+            hex_to_color("#00ff00"),
+            Some(Color::Rgb(0, 255, 0))
+        ));
         assert_eq!(hex_to_color("invalid"), None);
         assert_eq!(hex_to_color("#fff"), None); // Too short
     }
@@ -687,8 +694,7 @@ hi Visual guibg=#264f78
         assert_eq!(owner, "folke");
         assert_eq!(repo, "tokyonight.nvim");
 
-        let (owner, repo) =
-            parse_repo_url("https://vimcolorschemes.com/catppuccin/nvim").unwrap();
+        let (owner, repo) = parse_repo_url("https://vimcolorschemes.com/catppuccin/nvim").unwrap();
         assert_eq!(owner, "catppuccin");
         assert_eq!(repo, "nvim");
 
@@ -717,7 +723,8 @@ hi Normal guifg=#ffffff guibg=#000000
 
     #[test]
     fn test_find_vim_files_in_json() {
-        let json = r#"[{"name":"tokyonight.vim","path":"colors/tokyonight.vim"},{"name":"README.md"}]"#;
+        let json =
+            r#"[{"name":"tokyonight.vim","path":"colors/tokyonight.vim"},{"name":"README.md"}]"#;
         let files = find_vim_files_in_json(json);
         assert_eq!(files, vec!["tokyonight.vim"]);
     }

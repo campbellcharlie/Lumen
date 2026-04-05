@@ -78,7 +78,10 @@ impl Theme {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "yaml" || ext == "yml") {
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext == "yaml" || ext == "yml")
+                {
                     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                         names.push(stem.to_string());
                     }

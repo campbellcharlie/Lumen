@@ -885,8 +885,7 @@ fn render_paragraph(
             // Render with search highlighting — all positions in display columns
             let mut current_x = x;
             for seg in &line.segments {
-                let seg_display_width =
-                    UnicodeWidthStr::width(seg.text.as_str()) as u16;
+                let seg_display_width = UnicodeWidthStr::width(seg.text.as_str()) as u16;
                 let seg_end = current_x + seg_display_width;
                 let mut last_col: usize = 0; // display columns consumed within segment
 
@@ -896,19 +895,15 @@ fn render_paragraph(
 
                     // Check if this match overlaps with this segment
                     if match_start < seg_end && match_end > current_x {
-                        let overlap_start_col =
-                            match_start.saturating_sub(current_x) as usize;
-                        let overlap_end_col = (match_end.saturating_sub(current_x)
-                            as usize)
+                        let overlap_start_col = match_start.saturating_sub(current_x) as usize;
+                        let overlap_end_col = (match_end.saturating_sub(current_x) as usize)
                             .min(seg_display_width as usize);
 
                         // Convert display columns to byte indices for slicing
                         let overlap_start_byte =
                             display_col_to_byte_idx(&seg.text, overlap_start_col);
-                        let overlap_end_byte =
-                            display_col_to_byte_idx(&seg.text, overlap_end_col);
-                        let last_byte =
-                            display_col_to_byte_idx(&seg.text, last_col);
+                        let overlap_end_byte = display_col_to_byte_idx(&seg.text, overlap_end_col);
+                        let last_byte = display_col_to_byte_idx(&seg.text, last_col);
 
                         // Add text before the match
                         if overlap_start_col > last_col {
@@ -921,8 +916,7 @@ fn render_paragraph(
 
                         // Add highlighted match
                         if overlap_end_col > overlap_start_col {
-                            let match_text =
-                                &seg.text[overlap_start_byte..overlap_end_byte];
+                            let match_text = &seg.text[overlap_start_byte..overlap_end_byte];
                             let is_current = search_state
                                 .current_index
                                 .map(|idx| search_state.matches[idx] == **match_ref)
@@ -939,10 +933,7 @@ fn render_paragraph(
                                     .fg(RatatuiColor::White)
                             };
 
-                            spans.push(Span::styled(
-                                match_text.to_string(),
-                                highlight_style,
-                            ));
+                            spans.push(Span::styled(match_text.to_string(), highlight_style));
                             last_col = overlap_end_col;
                         }
                     }

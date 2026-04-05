@@ -348,7 +348,10 @@ mod tests {
             .iter()
             .flat_map(|line| line.segments.iter().map(|seg| seg.text.as_str()))
             .collect();
-        assert_eq!(reconstructed, "âfaçade", "UTF-8 characters should be preserved");
+        assert_eq!(
+            reconstructed, "âfaçade",
+            "UTF-8 characters should be preserved"
+        );
     }
 
     #[test]
