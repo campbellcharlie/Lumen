@@ -1,6 +1,7 @@
 //! Search functionality for finding text in documents
 
 use crate::layout::{LayoutElement, LayoutNode, Line};
+use unicode_width::UnicodeWidthStr;
 
 /// Search match position in the document
 #[derive(Debug, Clone, PartialEq)]
@@ -148,7 +149,7 @@ fn search_line(line: &Line, needle: &str, x: u16, y: u16, matches: &mut Vec<Sear
     let mut current_x = x;
     for segment in &line.segments {
         search_text(&segment.text, needle, current_x, y, matches);
-        current_x += segment.text.len() as u16;
+        current_x += UnicodeWidthStr::width(segment.text.as_str()) as u16;
     }
 }
 
@@ -159,13 +160,26 @@ fn search_text(text: &str, needle: &str, x: u16, y: u16, matches: &mut Vec<Searc
 
     while let Some(pos) = text_lower[start..].find(needle) {
         let abs_pos = start + pos;
+        let match_end = abs_pos + needle.len();
+
+        // Convert byte positions (from find) to display column widths
+        let display_offset = UnicodeWidthStr::width(&text_lower[..abs_pos]);
+        let match_display_width = UnicodeWidthStr::width(&text_lower[abs_pos..match_end]);
+
+        // Extract matched text from original (preserving case)
+        let matched_text = if match_end <= text.len() {
+            text[abs_pos..match_end].to_string()
+        } else {
+            text_lower[abs_pos..match_end].to_string()
+        };
+
         matches.push(SearchMatch {
             y,
-            x: x + abs_pos as u16,
-            length: needle.len(),
-            text: text[abs_pos..abs_pos + needle.len()].to_string(),
+            x: x + display_offset as u16,
+            length: match_display_width,
+            text: matched_text,
         });
-        start = abs_pos + 1; // Continue searching for overlapping matches
+        start = abs_pos + 1;
     }
 }
 

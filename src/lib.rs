@@ -23,6 +23,7 @@
 pub mod file_manager;
 pub mod ir;
 pub mod layout;
+pub mod mermaid;
 pub mod parser;
 pub mod preferences;
 pub mod render;

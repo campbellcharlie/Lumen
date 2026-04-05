@@ -4,6 +4,7 @@ use super::text::layout_text;
 use super::types::*;
 use crate::ir::{Block, CalloutKind, Document, Inline, ListItem};
 use crate::theme::Theme;
+use unicode_width::UnicodeWidthStr;
 
 /// Context for layout operations to reduce parameter passing
 struct LayoutContext<'a> {
@@ -252,7 +253,7 @@ fn layout_paragraph(
             if let Some(url) = &segment.link_url {
                 // Extract plain text from link
                 let text = segment.text.clone();
-                let segment_width = text.chars().count() as u16;
+                let segment_width = UnicodeWidthStr::width(text.as_str()) as u16;
 
                 ctx.hit_regions.push(HitRegion {
                     rect: Rectangle::new(current_x, line_y, segment_width, 1),
@@ -262,7 +263,7 @@ fn layout_paragraph(
                     },
                 });
             }
-            current_x += segment.text.chars().count() as u16;
+            current_x += UnicodeWidthStr::width(segment.text.as_str()) as u16;
         }
     }
 
@@ -402,7 +403,7 @@ fn layout_list(
     let max_marker_width = if ordered && !items.is_empty() {
         let last_number = start + items.len() - 1;
         let last_marker = format!("{}.", last_number);
-        last_marker.chars().count() as u16
+        UnicodeWidthStr::width(last_marker.as_str()) as u16
     } else {
         // For unordered lists, bullet "•" is always 1 char wide
         1

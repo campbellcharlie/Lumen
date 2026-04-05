@@ -458,3 +458,83 @@ pub enum UrlDisplayMode {
     Hover, // Show on hover (if terminal supports)
     Hidden, // Don't show URL
 }
+
+/// Theme validation errors
+#[derive(Debug)]
+pub enum ThemeValidationError {
+    SpacingTooLarge { field: &'static str, value: u16 },
+    EmptyName,
+}
+
+impl std::fmt::Display for ThemeValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SpacingTooLarge { field, value } => {
+                write!(f, "spacing.{} too large: {} (max 20)", field, value)
+            }
+            Self::EmptyName => write!(f, "theme name cannot be empty"),
+        }
+    }
+}
+
+impl Theme {
+    /// Validate theme values are within reasonable bounds.
+    /// Returns a list of validation errors (empty = valid).
+    pub fn validate(&self) -> Vec<ThemeValidationError> {
+        let mut errors = Vec::new();
+        const MAX_SPACING: u16 = 20;
+
+        if self.name.trim().is_empty() {
+            errors.push(ThemeValidationError::EmptyName);
+        }
+        if self.spacing.paragraph_spacing > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "paragraph_spacing",
+                value: self.spacing.paragraph_spacing,
+            });
+        }
+        if self.spacing.heading_margin_top > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "heading_margin_top",
+                value: self.spacing.heading_margin_top,
+            });
+        }
+        if self.spacing.heading_margin_bottom > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "heading_margin_bottom",
+                value: self.spacing.heading_margin_bottom,
+            });
+        }
+        if self.spacing.list_indent > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "list_indent",
+                value: self.spacing.list_indent,
+            });
+        }
+        if self.spacing.blockquote_indent > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "blockquote_indent",
+                value: self.spacing.blockquote_indent,
+            });
+        }
+        if self.spacing.code_block_padding > MAX_SPACING {
+            errors.push(ThemeValidationError::SpacingTooLarge {
+                field: "code_block_padding",
+                value: self.spacing.code_block_padding,
+            });
+        }
+
+        errors
+    }
+
+    /// Clamp spacing values to reasonable bounds, fixing invalid themes in-place.
+    pub fn clamp_spacing(&mut self) {
+        const MAX: u16 = 20;
+        self.spacing.paragraph_spacing = self.spacing.paragraph_spacing.min(MAX);
+        self.spacing.heading_margin_top = self.spacing.heading_margin_top.min(MAX);
+        self.spacing.heading_margin_bottom = self.spacing.heading_margin_bottom.min(MAX);
+        self.spacing.list_indent = self.spacing.list_indent.min(MAX);
+        self.spacing.blockquote_indent = self.spacing.blockquote_indent.min(MAX);
+        self.spacing.code_block_padding = self.spacing.code_block_padding.min(MAX);
+    }
+}

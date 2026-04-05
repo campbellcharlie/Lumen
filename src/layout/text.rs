@@ -3,6 +3,7 @@
 use super::types::{ImageReference, Line, TextStyle};
 use crate::ir::Inline;
 use crate::theme::{FontStyle, FontWeight, Theme};
+use unicode_width::UnicodeWidthStr;
 
 /// Context for laying out inline elements
 struct InlineLayoutContext<'a> {
@@ -222,7 +223,7 @@ fn layout_text_content(
     let words: Vec<&str> = text.split_whitespace().collect();
 
     for (i, word) in words.iter().enumerate() {
-        let word_len = word.chars().count() as u16;
+        let word_len = UnicodeWidthStr::width(*word) as u16;
         let need_space = i > 0 || *current_width > 0;
         let space_len = if need_space { 1 } else { 0 };
 
@@ -241,7 +242,7 @@ fn layout_text_content(
 
         // Handle very long words that don't fit even on empty line
         if word_len > max_width {
-            // Break word into chunks at character boundaries (not byte boundaries)
+            // Break word into chunks respecting display width (CJK chars = 2 cols)
             let mut remaining = *word;
             while !remaining.is_empty() {
                 let available_width = (max_width - *current_width) as usize;
@@ -252,19 +253,28 @@ fn layout_text_content(
                     continue;
                 }
 
-                // Take up to available_width characters (not bytes)
-                let char_count = remaining.chars().count().min(available_width);
+                // Take characters until we fill available display width
+                let mut chunk_width = 0usize;
+                let mut byte_index = 0usize;
+                for (idx, ch) in remaining.char_indices() {
+                    let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if chunk_width + ch_width > available_width && chunk_width > 0 {
+                        break;
+                    }
+                    chunk_width += ch_width;
+                    byte_index = idx + ch.len_utf8();
+                }
 
-                // Find the byte index for char_count characters
-                let byte_index = remaining
-                    .char_indices()
-                    .nth(char_count)
-                    .map(|(idx, _)| idx)
-                    .unwrap_or(remaining.len());
+                // Ensure we take at least one character to avoid infinite loop
+                if byte_index == 0 && !remaining.is_empty() {
+                    let ch = remaining.chars().next().unwrap();
+                    byte_index = ch.len_utf8();
+                    chunk_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
+                }
 
                 let chunk = &remaining[..byte_index];
                 current_line.add_segment_with_link(chunk.to_string(), style, link_url.clone());
-                *current_width += char_count as u16;
+                *current_width += chunk_width as u16;
                 remaining = &remaining[byte_index..];
 
                 if !remaining.is_empty() {

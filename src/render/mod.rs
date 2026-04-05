@@ -15,6 +15,7 @@ use ratatui_image::{picker::Picker, protocol::StatefulProtocol, StatefulImage};
 use std::fs;
 use std::io;
 use std::path::Path;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub type Terminal = RatatuiTerminal<CrosstermBackend<io::Stdout>>;
 
@@ -87,7 +88,7 @@ pub fn restore_terminal(terminal: &mut Terminal) -> io::Result<()> {
 /// let search_state = SearchState::new();
 ///
 /// render(&mut terminal, &tree, &theme, false, &search_state,
-///        &file_manager, false, false, "", None).unwrap();
+///        &file_manager, false, false, "", None, None).unwrap();
 /// ```
 pub fn render(
     terminal: &mut Terminal,
@@ -100,6 +101,7 @@ pub fn render(
     file_jump_mode: bool,
     file_jump_buffer: &str,
     selected_link_index: Option<usize>,
+    status_message: Option<&str>,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let area = frame.area();
@@ -178,6 +180,7 @@ pub fn render(
             search_state,
             file_jump_mode,
             file_jump_buffer,
+            status_message,
         );
 
         // Render help menu if active
@@ -298,7 +301,7 @@ fn render_node(
 
                 // Calculate display width (not byte length)
                 // The bullet "•" is 3 bytes but displays as 1 char width
-                let marker_display_width = marker.chars().count() as u16;
+                let marker_display_width = UnicodeWidthStr::width(marker.as_str()) as u16;
 
                 // Calculate allocated marker space based on where the content starts
                 // This allows us to right-align the marker for consistent alignment
@@ -866,7 +869,6 @@ fn render_paragraph(
             let mut current_x = x;
             for seg in &line.segments {
                 let is_selected_link = if let Some(sel_rect) = selected_link_rect {
-                    // Check if this segment overlaps the selected link rectangle
                     current_x >= sel_rect.x
                         && current_x < sel_rect.x + sel_rect.width
                         && line_y_in_doc >= sel_rect.y
@@ -877,14 +879,16 @@ fn render_paragraph(
                 };
 
                 spans.push(text_segment_to_span(seg, theme, is_selected_link));
-                current_x += seg.text.chars().count() as u16;
+                current_x += UnicodeWidthStr::width(seg.text.as_str()) as u16;
             }
         } else {
-            // Render with highlighting
+            // Render with search highlighting — all positions in display columns
             let mut current_x = x;
             for seg in &line.segments {
-                let seg_end = current_x + seg.text.len() as u16;
-                let mut last_pos = 0;
+                let seg_display_width =
+                    UnicodeWidthStr::width(seg.text.as_str()) as u16;
+                let seg_end = current_x + seg_display_width;
+                let mut last_col: usize = 0; // display columns consumed within segment
 
                 for match_ref in &line_matches {
                     let match_start = match_ref.x;
@@ -892,13 +896,23 @@ fn render_paragraph(
 
                     // Check if this match overlaps with this segment
                     if match_start < seg_end && match_end > current_x {
-                        let overlap_start = match_start.saturating_sub(current_x) as usize;
-                        let overlap_end =
-                            (match_end.saturating_sub(current_x) as usize).min(seg.text.len());
+                        let overlap_start_col =
+                            match_start.saturating_sub(current_x) as usize;
+                        let overlap_end_col = (match_end.saturating_sub(current_x)
+                            as usize)
+                            .min(seg_display_width as usize);
+
+                        // Convert display columns to byte indices for slicing
+                        let overlap_start_byte =
+                            display_col_to_byte_idx(&seg.text, overlap_start_col);
+                        let overlap_end_byte =
+                            display_col_to_byte_idx(&seg.text, overlap_end_col);
+                        let last_byte =
+                            display_col_to_byte_idx(&seg.text, last_col);
 
                         // Add text before the match
-                        if overlap_start > last_pos {
-                            let before_text = &seg.text[last_pos..overlap_start];
+                        if overlap_start_col > last_col {
+                            let before_text = &seg.text[last_byte..overlap_start_byte];
                             spans.push(Span::styled(
                                 before_text.to_string(),
                                 segment_to_style(seg, theme),
@@ -906,8 +920,9 @@ fn render_paragraph(
                         }
 
                         // Add highlighted match
-                        if overlap_end > overlap_start {
-                            let match_text = &seg.text[overlap_start..overlap_end];
+                        if overlap_end_col > overlap_start_col {
+                            let match_text =
+                                &seg.text[overlap_start_byte..overlap_end_byte];
                             let is_current = search_state
                                 .current_index
                                 .map(|idx| search_state.matches[idx] == **match_ref)
@@ -924,15 +939,19 @@ fn render_paragraph(
                                     .fg(RatatuiColor::White)
                             };
 
-                            spans.push(Span::styled(match_text.to_string(), highlight_style));
-                            last_pos = overlap_end;
+                            spans.push(Span::styled(
+                                match_text.to_string(),
+                                highlight_style,
+                            ));
+                            last_col = overlap_end_col;
                         }
                     }
                 }
 
                 // Add remaining text after all matches
-                if last_pos < seg.text.len() {
-                    let after_text = &seg.text[last_pos..];
+                if last_col < seg_display_width as usize {
+                    let last_byte = display_col_to_byte_idx(&seg.text, last_col);
+                    let after_text = &seg.text[last_byte..];
                     spans.push(Span::styled(
                         after_text.to_string(),
                         segment_to_style(seg, theme),
@@ -955,6 +974,19 @@ fn render_paragraph(
 
         frame.render_widget(para, line_area);
     }
+}
+
+/// Convert a display column offset to a byte index within a string.
+/// Handles multi-byte and multi-width (CJK, emoji) characters correctly.
+fn display_col_to_byte_idx(text: &str, target_col: usize) -> usize {
+    let mut col = 0;
+    for (byte_idx, ch) in text.char_indices() {
+        if col >= target_col {
+            return byte_idx;
+        }
+        col += UnicodeWidthChar::width(ch).unwrap_or(0);
+    }
+    text.len()
 }
 
 /// Convert a text segment to a style (without the text)
@@ -1081,10 +1113,11 @@ fn render_code_block(
             );
             let badge_text = RatatuiText::from(badge_span);
 
+            let lang_display_width = UnicodeWidthStr::width(lang_name.as_str()) as u16;
             let badge_area = ratatui::layout::Rect {
-                x: x + actual_width.saturating_sub(lang_name.len() as u16 + 3),
+                x: x + actual_width.saturating_sub(lang_display_width + 3),
                 y: display_y,
-                width: lang_name.len() as u16 + 2,
+                width: lang_display_width + 2,
                 height: 1,
             };
 
@@ -1145,6 +1178,7 @@ fn render_status_bar(
     search_state: &SearchState,
     file_jump_mode: bool,
     file_jump_buffer: &str,
+    status_message: Option<&str>,
 ) {
     // If file jump mode is active, show file jump prompt
     if file_jump_mode {
@@ -1247,25 +1281,53 @@ fn render_status_bar(
         String::new()
     };
 
-    let help_text = "Press 'h' for help";
+    let right_text = if let Some(msg) = status_message {
+        format!(" {} ", msg)
+    } else {
+        "Press 'h' for help".to_string()
+    };
 
     // Pad status bar to fill entire width
-    let total_text_len = status.len() + position.len() + search_info.len() + help_text.len();
+    let total_text_len = status.len() + position.len() + search_info.len() + right_text.len();
     let padding_len = area.width.saturating_sub(total_text_len as u16) as usize;
     let padding = " ".repeat(padding_len);
 
     let full_status = format!(
         "{}{}{}{}{}",
-        status, position, search_info, padding, help_text
+        status, position, search_info, padding, right_text
     );
 
-    let status_span = Span::styled(
-        full_status,
-        Style::default()
-            .bg(RatatuiColor::DarkGray)
-            .fg(RatatuiColor::White),
-    );
-    let status_text = RatatuiText::from(status_span);
+    // Highlight the status message portion if present
+    let status_span = if status_message.is_some() {
+        let msg_start = full_status.len() - right_text.len();
+        let before = &full_status[..msg_start];
+        let msg_part = &full_status[msg_start..];
+
+        let spans = vec![
+            Span::styled(
+                before.to_string(),
+                Style::default()
+                    .bg(RatatuiColor::DarkGray)
+                    .fg(RatatuiColor::White),
+            ),
+            Span::styled(
+                msg_part.to_string(),
+                Style::default()
+                    .bg(RatatuiColor::Blue)
+                    .fg(RatatuiColor::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ];
+        RatatuiText::from(ratatui::text::Line::from(spans))
+    } else {
+        let span = Span::styled(
+            full_status,
+            Style::default()
+                .bg(RatatuiColor::DarkGray)
+                .fg(RatatuiColor::White),
+        );
+        RatatuiText::from(span)
+    };
 
     let status_area = ratatui::layout::Rect {
         x: 0,
@@ -1274,7 +1336,7 @@ fn render_status_bar(
         height: 1,
     };
 
-    frame.render_widget(Paragraph::new(status_text), status_area);
+    frame.render_widget(Paragraph::new(status_span), status_area);
 }
 
 fn render_help_menu(frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {

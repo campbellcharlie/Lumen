@@ -19,6 +19,8 @@ dirs = "5.0"  # For user home directory access
 # Using version 8.x which is compatible with our setup
 ratatui-image = { version = "8", default-features = false, features = ["crossterm", "serde"] }
 image = "0.25"  # For loading image files
+unicode-width = "0.1"  # Correct display width for CJK, emoji, etc.
+ureq = "2"  # Lightweight HTTP client for theme downloads
 
 [dev-dependencies]
 pretty_assertions = "1.4"

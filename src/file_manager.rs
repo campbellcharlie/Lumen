@@ -132,6 +132,15 @@ impl FileManager {
         Ok(())
     }
 
+    /// Reload current file from disk and apply mermaid rendering
+    pub fn reload_current_with_mermaid(&mut self) -> std::io::Result<()> {
+        self.reload_current()?;
+        if let Some(file) = self.current_file_mut() {
+            crate::mermaid::transform_mermaid_blocks(&mut file.document);
+        }
+        Ok(())
+    }
+
     /// Save scroll position for current file
     pub fn save_scroll_position(&mut self, scroll_y: u16) {
         if let Some(file) = self.current_file_mut() {

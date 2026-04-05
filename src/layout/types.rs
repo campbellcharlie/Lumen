@@ -154,7 +154,11 @@ impl Line {
     }
 
     pub fn width(&self) -> u16 {
-        self.segments.iter().map(|s| s.text.len() as u16).sum()
+        use unicode_width::UnicodeWidthStr;
+        self.segments
+            .iter()
+            .map(|s| UnicodeWidthStr::width(s.text.as_str()) as u16)
+            .sum()
     }
 
     pub fn is_empty(&self) -> bool {

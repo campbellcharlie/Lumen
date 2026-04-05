@@ -11,11 +11,12 @@ Unlike traditional Markdown viewers that style text with ANSI codes, Lumen treat
 ## Installation
 
 ```bash
-# Build the project
+# Build and install
 cargo build --release
+cp target/release/lumen ~/.bin/  # or wherever you keep binaries
 
-# The binary will be at:
-./target/release/lumen
+# Or use the install script (macOS)
+./install-local.sh
 ```
 
 ## Usage
@@ -24,22 +25,33 @@ cargo build --release
 # View a single file
 lumen README.md
 
-# Try the feature demo
-lumen examples/markdown_demo.md
-
-# View AI-generated responses (use Tab to switch between them)
+# View multiple files (Tab to switch between them)
 lumen claude_response.md gemini_output.md codex_analysis.md
 
 # Use a different theme
 lumen README.md neon
 
-# View all AI outputs in a directory
-lumen *.md
+# View with inline images
+lumen README.md --inline-images
+
+# Disable images
+lumen README.md --no-images
+
+# List all available themes (built-in + user)
+lumen --list-themes
+
+# Import a vim colorscheme as a Lumen theme
+lumen --import-theme https://github.com/morhetz/gruvbox
+lumen --import-theme https://vimcolorschemes.com/NLKNguyen/papercolor-theme
+lumen --import-theme ./colors/mytheme.vim --name mytheme
 ```
 
-### Available Themes
+---
 
-**Built-in themes:**
+## Themes
+
+### Built-in Themes
+
 - `docs` — Clean, documentation-focused (default)
 - `neon` — Vibrant, modern with bright colors
 - `minimal` — Low visual noise, ASCII fallbacks
@@ -50,6 +62,57 @@ lumen *.md
 - `nord` — Arctic, blue-ish coldness
 - `tokyo-night` — Modern dark Tokyo-inspired
 - `catppuccin` — Soothing pastel colors
+
+Press `t` while viewing to cycle through all themes.
+
+### User Themes
+
+Drop YAML theme files in `~/.lumen/themes/` and they'll be available alongside built-in themes. User themes are included in the `t` cycle and shown in `--list-themes`.
+
+### Importing Vim Colorschemes
+
+Import any vim colorscheme from GitHub, [vimcolorschemes.com](https://vimcolorschemes.com), or a local `.vim` file:
+
+```bash
+# From a GitHub repo
+lumen --import-theme https://github.com/dracula/vim
+
+# From vimcolorschemes.com
+lumen --import-theme https://vimcolorschemes.com/NLKNguyen/papercolor-theme
+
+# From a direct .vim file URL
+lumen --import-theme https://raw.githubusercontent.com/joshdick/onedark.vim/main/colors/onedark.vim --name onedark
+
+# From a local file
+lumen --import-theme ./colors/mytheme.vim
+```
+
+Imported themes are saved to `~/.lumen/themes/` and immediately usable.
+
+---
+
+## Mermaid Diagrams
+
+Lumen renders mermaid flowchart code blocks as ASCII/Unicode art directly in the terminal — no external tools needed.
+
+````markdown
+```mermaid
+graph LR
+    A[Input] --> B[Process] --> C[Output]
+```
+````
+
+Renders as:
+
+```
+┌─────────┐     ┌───────────┐     ┌──────────┐
+│  Input  │────▶│  Process  │────▶│  Output  │
+└─────────┘     └───────────┘     └──────────┘
+```
+
+Supports `graph` and `flowchart` with all directions (LR, RL, TD/TB, BT), node shapes, edge labels, and branching. Unsupported diagram types (sequence, class, etc.) display as raw code.
+
+Inspired by [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) by Alexander Grooff.
 
 ---
 
@@ -66,23 +129,40 @@ lumen *.md
 | `PageUp` | Scroll up one page |
 | `g` / `Home` | Go to top of document |
 | `G` / `End` | Go to bottom of document |
+| `n` | Next heading (or next search result) |
+| `p` | Previous heading |
+| `N` | Previous search result |
 
-### Links & Navigation
+### Search
 | Key | Action |
 |-----|--------|
-| `a` | Cycle through links (for table of contents navigation) |
+| `/` | Start search |
+| `Enter` | Execute search / close search input |
+| `n` / `N` | Next / previous match |
+| `Esc` | Clear search results |
+
+### Links & Anchors
+| Key | Action |
+|-----|--------|
+| `a` | Cycle through links |
 | `Enter` | Follow selected link (jump to anchor) |
 
 ### File Management
 | Key | Action |
 |-----|--------|
-| `Tab` | Switch to next file (when multiple files are open) |
+| `Tab` | Switch to next file |
 | `Shift+Tab` | Switch to previous file |
-| `f` | Toggle file sidebar visibility (when multiple files are open) |
+| `1`-`9` | Jump to file by number |
+| `:` then number | Jump to file N (e.g., `:12`) |
+| `f` | Toggle file sidebar |
+| `r` | Reload current file |
 
 ### General
 | Key | Action |
 |-----|--------|
+| `t` | Cycle through themes |
+| `m` | Toggle mouse mode |
+| `h` | Toggle help menu |
 | `q` / `Esc` | Quit |
 
 ---
@@ -119,6 +199,9 @@ AI coding tools (Claude, Gemini, Codex) generate complex markdown with deep nest
 ### Mixed Content
 ![Mixed Content](screenshots/06-mixed-content-and-rules.png)
 
+### Mermaid Diagrams
+![Mermaid Diagrams](screenshots/08-mermaid-diagrams.png)
+
 ### Help Menu
 ![Keyboard Shortcuts](screenshots/07-help-menu-keyboard-shortcuts.png)
 
@@ -132,17 +215,20 @@ AI coding tools (Claude, Gemini, Codex) generate complex markdown with deep nest
 - Tables with accurate border rendering
 - Code blocks, task lists, strikethrough
 - Links, images, blockquotes with nesting
+- Mermaid flowchart diagrams rendered as ASCII art
 - Proper tight list handling for correct structure
 
 ### Theming
-- 10 built-in themes: Docs (default), Neon, Minimal, Dracula, Monokai, Solarized, Gruvbox, Nord, Tokyo Night, Catppuccin
+- 10 built-in themes with `t` to cycle
+- User themes from `~/.lumen/themes/` (YAML)
+- Import vim colorschemes from GitHub or vimcolorschemes.com
 - Color palettes with RGB/ANSI fallbacks
 - Multiple border styles: Single, Double, Rounded, Heavy, ASCII
-- Typography and spacing configuration via YAML
+- Theme validation with automatic spacing clamping
 
 ### Layout & Rendering
 - Vertical flow layout with proper margins
-- Smart text wrapping (word-boundary + long-word breaking)
+- Smart text wrapping with Unicode display-width awareness (CJK, emoji)
 - Table layout with column distribution
 - Rich colors (24-bit RGB, 256-color, 16-color)
 - Box-drawing characters for borders
@@ -150,11 +236,12 @@ AI coding tools (Claude, Gemini, Codex) generate complex markdown with deep nest
 
 ### Interactive Navigation
 - Keyboard-driven navigation (vim-style bindings)
+- Full-text search with match highlighting
 - Link cycling and anchor jumping for table of contents
-- Visual link highlighting for selected links
-- Multi-file support with tab switching
-- Status bar with position indicator and file name
-- Hit regions for interactive elements
+- Multi-file support with tab switching and file sidebar
+- Theme cycling with status bar notification
+- Mouse support (scroll, click links)
+- File reload without restart
 
 ---
 
@@ -171,6 +258,7 @@ Markdown → IR (pulldown-cmark) → Theme + Layout → Terminal Renderer (Ratat
 - Token-based theming (no CSS selectors, just element-type styling)
 - Two-phase layout: measure intrinsic sizes, then assign positions
 - Character-grid coordinates for natural terminal rendering
+- Unicode-width aware throughout (correct display for CJK, emoji)
 
 ---
 
@@ -181,13 +269,18 @@ Lumen/
 ├── src/
 │   ├── ir/           # Intermediate representation
 │   ├── parser/       # Markdown → IR
-│   ├── theme/        # Theming system
+│   ├── theme/        # Theming system + vim import
 │   ├── layout/       # Layout engine
 │   ├── render/       # Terminal renderer
+│   ├── mermaid.rs    # Mermaid diagram ASCII renderer
+│   ├── search.rs     # Full-text search
+│   ├── preferences.rs # User preferences
+│   ├── file_manager.rs # Multi-file management
 │   ├── lib.rs        # Public API
 │   └── main.rs       # Interactive viewer binary
 ├── themes/           # YAML theme files
-└── examples/         # Demo programs
+├── examples/         # Demo programs and sample markdown
+└── install-local.sh  # Local install script
 ```
 
 ---
@@ -197,6 +290,8 @@ Lumen/
 - [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) — Fast, spec-compliant Markdown parser
 - [Ratatui](https://github.com/ratatui/ratatui) — Terminal UI framework
 - [crossterm](https://github.com/crossterm-rs/crossterm) — Cross-platform terminal manipulation
+- [unicode-width](https://github.com/unicode-rs/unicode-width) — Correct display width for Unicode
+- [ureq](https://github.com/algesten/ureq) — Lightweight HTTP client (for theme downloads)
 
 ---
 
@@ -211,6 +306,9 @@ cargo test
 ### Examples
 
 ```bash
+# Mermaid diagram demo
+lumen examples/mermaid_demo.md
+
 # Theme demo
 cargo run --example themes
 

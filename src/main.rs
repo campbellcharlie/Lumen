@@ -53,6 +53,45 @@ fn document_has_images(document: &lumen::Document) -> bool {
     document.blocks.iter().any(block_has_images)
 }
 
+/// Handle --import-theme command
+fn handle_import_theme(source: &str, name_override: Option<&str>) -> io::Result<()> {
+    use lumen::theme::vim_import;
+
+    println!("Importing theme from: {}", source);
+
+    let mut theme = if source.starts_with("http://") || source.starts_with("https://") {
+        // URL import
+        match vim_import::import_from_url(source) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // Local file import
+        vim_import::import_from_file(source)?
+    };
+
+    // Apply name override if provided
+    let save_name = if let Some(name) = name_override {
+        theme.name = name.to_string();
+        name.to_string()
+    } else {
+        // Sanitize name for filesystem
+        theme
+            .name
+            .to_lowercase()
+            .replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "-")
+    };
+
+    let path = theme.save_to_user_themes(&save_name)?;
+    println!("Theme '{}' saved to: {}", save_name, path.display());
+    println!("Use it with: lumen <file.md> {}", save_name);
+
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     // Set up panic handler to ensure terminal is always restored
     let original_hook = std::panic::take_hook();
@@ -75,6 +114,42 @@ fn main() -> io::Result<()> {
     let inline_images = args
         .iter()
         .any(|arg| arg == "--inline-images" || arg == "-i");
+    let list_themes = args.iter().any(|arg| arg == "--list-themes");
+
+    // Handle --import-theme <url-or-path> [--name <name>]
+    let import_theme_idx = args.iter().position(|arg| arg == "--import-theme");
+    if let Some(idx) = import_theme_idx {
+        let source = args.get(idx + 1).cloned().unwrap_or_else(|| {
+            eprintln!("Error: --import-theme requires a URL or file path");
+            eprintln!("Usage: lumen --import-theme <url-or-path> [--name <theme-name>]");
+            std::process::exit(1);
+        });
+
+        // Optional --name override
+        let name_idx = args.iter().position(|arg| arg == "--name");
+        let name_override = name_idx.and_then(|i| args.get(i + 1).map(|s| s.as_str()));
+
+        return handle_import_theme(&source, name_override);
+    }
+
+    // Handle --list-themes
+    if list_themes {
+        println!("Built-in themes:");
+        for name in Theme::builtin_names() {
+            println!("  {}", name);
+        }
+        let user_themes = Theme::user_theme_names();
+        if !user_themes.is_empty() {
+            println!("\nUser themes (~/.lumen/themes/):");
+            for name in &user_themes {
+                println!("  {}", name);
+            }
+        } else {
+            println!("\nNo user themes installed.");
+            println!("Import vim themes: lumen --import-theme <url-or-path>");
+        }
+        return Ok(());
+    }
 
     // Get non-flag arguments (skip program name)
     let non_flag_args: Vec<&String> = args
@@ -89,13 +164,26 @@ fn main() -> io::Result<()> {
         eprintln!("\nOptions:");
         eprintln!("  --no-images, -n       Disable all image rendering");
         eprintln!("  --inline-images, -i   Render images inline (default: sidebar)");
-        eprintln!("\nAvailable themes: {}", Theme::builtin_names().join(", "));
+        eprintln!("  --list-themes         List all available themes");
+        eprintln!("  --import-theme <src>  Import a vim colorscheme from URL or file");
+        eprintln!("  --name <name>         Override theme name (with --import-theme)");
+        eprintln!(
+            "\nAvailable themes: {}",
+            Theme::all_theme_names().join(", ")
+        );
         eprintln!("\nExamples:");
         eprintln!("  lumen README.md");
         eprintln!("  lumen README.md CHANGELOG.md");
         eprintln!("  lumen README.md neon");
         eprintln!("  lumen README.md --inline-images");
         eprintln!("  lumen README.md --no-images");
+        eprintln!(
+            "  lumen --import-theme https://github.com/folke/tokyonight.nvim"
+        );
+        eprintln!(
+            "  lumen --import-theme https://vimcolorschemes.com/catppuccin/nvim"
+        );
+        eprintln!("  lumen --import-theme ./colors/mytheme.vim --name mytheme");
         eprintln!("\nKeyboard shortcuts:");
         eprintln!("  Tab / Shift+Tab       Switch between open files");
         eprintln!("  1-9                   Jump to file 1-9");
@@ -146,12 +234,13 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         });
 
-        let document = parse_markdown(&markdown);
+        let mut document = parse_markdown(&markdown);
+        lumen::mermaid::transform_mermaid_blocks(&mut document);
         file_manager.add_file(PathBuf::from(file_path), document);
     }
 
-    // Load theme
-    let theme = Theme::builtin(theme_name).unwrap_or_else(|| {
+    // Load theme — check user themes first, then built-in
+    let theme = Theme::load(theme_name).unwrap_or_else(|| {
         eprintln!("Unknown theme '{}', using 'docs'", theme_name);
         Theme::builtin("docs").expect("Built-in 'docs' theme should always exist")
     });
@@ -240,6 +329,8 @@ fn run_interactive(
         let mut file_jump_buffer = String::new(); // Buffer for typing file numbers
         let mut file_jump_mode = false; // Whether we're in file jump mode
         let mut selected_link_index: Option<usize> = None; // Currently selected link for navigation
+        let mut status_message: Option<String> = None; // Transient status bar message
+        let mut status_message_expiry: Option<Instant> = None; // When to clear the message
 
         // Enable mouse capture if preference is set
         if mouse_enabled {
@@ -248,8 +339,17 @@ fn run_interactive(
 
         // Main event loop
         loop {
-            // Render only if needed and enough time has passed
+            // Clear expired status messages
             let now = Instant::now();
+            if let Some(expiry) = status_message_expiry {
+                if now >= expiry {
+                    status_message = None;
+                    status_message_expiry = None;
+                    needs_render = true;
+                }
+            }
+
+            // Render only if needed and enough time has passed
             if needs_render && now.duration_since(last_render) >= frame_duration {
                 let show_file_sidebar = file_manager.has_multiple_files() && file_sidebar_visible;
                 render::render(
@@ -263,6 +363,7 @@ fn run_interactive(
                     file_jump_mode,
                     &file_jump_buffer,
                     selected_link_index,
+                    status_message.as_deref(),
                 )?;
                 last_render = now;
                 needs_render = false;
@@ -464,7 +565,9 @@ fn run_interactive(
                             // Toggle mouse mode
                             mouse_enabled = !mouse_enabled;
                             preferences.mouse_enabled = mouse_enabled;
-                            let _ = preferences.save();
+                            if let Err(e) = preferences.save() {
+                                eprintln!("Warning: Failed to save preferences: {}", e);
+                            }
 
                             if mouse_enabled {
                                 crossterm::execute!(
@@ -482,7 +585,9 @@ fn run_interactive(
                             // Toggle file sidebar visibility
                             file_sidebar_visible = !file_sidebar_visible;
                             preferences.file_sidebar_visible = file_sidebar_visible;
-                            let _ = preferences.save();
+                            if let Err(e) = preferences.save() {
+                                eprintln!("Warning: Failed to save preferences: {}", e);
+                            }
 
                             // Save current scroll before recalculating
                             let old_scroll = tree.viewport.scroll_y;
@@ -502,21 +607,23 @@ fn run_interactive(
                                 .scroll_to_clamped(old_scroll, tree.document_height());
                             needs_render = true;
                         } else if key.code == KeyCode::Char('t') {
-                            // Cycle to next theme
-                            let theme_names = Theme::builtin_names();
+                            // Cycle to next theme (built-in + user themes)
+                            let theme_names = Theme::all_theme_names();
                             let current_index = theme_names
                                 .iter()
-                                .position(|&n| n == preferences.theme)
+                                .position(|n| *n == preferences.theme)
                                 .unwrap_or(0);
                             let next_index = (current_index + 1) % theme_names.len();
-                            preferences.theme = theme_names[next_index].to_string();
+                            preferences.theme = theme_names[next_index].clone();
 
-                            // Load new theme
-                            theme = Theme::builtin(&preferences.theme)
-                                .expect("Built-in theme from theme_names should always exist");
+                            // Load new theme (user or built-in)
+                            theme = Theme::load(&preferences.theme)
+                                .expect("Theme from all_theme_names should always load");
 
                             // Save preferences
-                            let _ = preferences.save();
+                            if let Err(e) = preferences.save() {
+                                eprintln!("Warning: Failed to save preferences: {}", e);
+                            }
 
                             // Save current scroll
                             let old_scroll = tree.viewport.scroll_y;
@@ -534,6 +641,12 @@ fn run_interactive(
                             // Restore scroll position
                             tree.viewport
                                 .scroll_to_clamped(old_scroll, tree.document_height());
+
+                            // Show theme name briefly
+                            status_message =
+                                Some(format!("Theme: {}", preferences.theme));
+                            status_message_expiry =
+                                Some(Instant::now() + Duration::from_secs(2));
                             needs_render = true;
                         } else if key.code == KeyCode::Tab {
                             // Save current scroll before switching
@@ -623,7 +736,7 @@ fn run_interactive(
                             // Save scroll before reload
                             let old_scroll = tree.viewport.scroll_y;
 
-                            if let Err(e) = file_manager.reload_current() {
+                            if let Err(e) = file_manager.reload_current_with_mermaid() {
                                 eprintln!("Failed to reload file: {}", e);
                             } else {
                                 // Recalculate layout

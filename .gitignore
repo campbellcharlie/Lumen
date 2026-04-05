@@ -16,8 +16,8 @@
 .DS_Store
 
 # Rust
-Cargo.lock
 *.pdb
+*.profraw
 
 # Python
 __pycache__/
@@ -38,8 +38,3 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
-
-
-# Added by cargo
-
-/target
